@@ -244,8 +244,10 @@
                 const elements = [];
 
                 // Interior dimensions are the reference
-                // Outer wall height = height (reaches from base to top of interior)
-                // Inner panel height = height - mt (folds back inside)
+                // Base panel is larger to account for inner panels folding back inside
+                // After assembly, interior space will be width × depth × height
+                const baseW = width + 2 * mt; // base width (inner panels take mt on each side)
+                const baseD = depth + 2 * mt; // base depth (inner panels take mt on each side)
                 const innerH = height - mt;
                 const wingH = wingLength; // wing depth (adjustable to prevent overlap on narrow boxes)
                 const cl = clearance; // fold line offset for base panel
@@ -261,9 +263,9 @@
                     M ${baseX} ${baseY}
                     L ${baseX} ${baseY - height}
                     L ${baseX} ${baseY - height - innerH}
-                    ${generateTabEdge(baseX, baseY - height - innerH, width, 'up')}
-                    L ${baseX + width} ${baseY - height}
-                    L ${baseX + width} ${baseY}
+                    ${generateTabEdge(baseX, baseY - height - innerH, baseW, 'up')}
+                    L ${baseX + baseW} ${baseY - height}
+                    L ${baseX + baseW} ${baseY}
                 `;
                 elements.push(<path key="front-wall-inner" d={frontPath} {...cutStyle} />);
 
@@ -271,37 +273,39 @@
                 // Multiple fold lines to account for material thickness
                 elements.push(...generateMultiFoldLine(
                     baseX + clip, baseY - height,
-                    baseX + width - clip, baseY - height,
+                    baseX + baseW - clip, baseY - height,
                     'front-inner-fold', 'up'
                 ));
                 // Fold line between base and front wall (offset outward by clearance, clipped)
-                elements.push(...generateDashedLine(
+                // Multiple fold lines to account for material thickness
+                elements.push(...generateMultiFoldLine(
                     baseX + clip, baseY - cl,
-                    baseX + width - clip, baseY - cl,
-                    'front-fold'
+                    baseX + baseW - clip, baseY - cl,
+                    'front-fold', 'up'
                 ));
 
                 // ============ BACK WALL + INNER PANEL ============
                 const backPath = `
-                    M ${baseX} ${baseY + depth}
-                    L ${baseX} ${baseY + depth + height}
-                    L ${baseX} ${baseY + depth + height + innerH}
-                    ${generateTabEdge(baseX, baseY + depth + height + innerH, width, 'down')}
-                    L ${baseX + width} ${baseY + depth + height}
-                    L ${baseX + width} ${baseY + depth}
+                    M ${baseX} ${baseY + baseD}
+                    L ${baseX} ${baseY + baseD + height}
+                    L ${baseX} ${baseY + baseD + height + innerH}
+                    ${generateTabEdge(baseX, baseY + baseD + height + innerH, baseW, 'down')}
+                    L ${baseX + baseW} ${baseY + baseD + height}
+                    L ${baseX + baseW} ${baseY + baseD}
                 `;
                 elements.push(<path key="back-wall-inner" d={backPath} {...cutStyle} />);
 
                 // Multiple fold lines to account for material thickness
                 elements.push(...generateMultiFoldLine(
-                    baseX + clip, baseY + depth + height,
-                    baseX + width - clip, baseY + depth + height,
+                    baseX + clip, baseY + baseD + height,
+                    baseX + baseW - clip, baseY + baseD + height,
                     'back-inner-fold', 'down'
                 ));
-                elements.push(...generateDashedLine(
-                    baseX + clip, baseY + depth + cl,
-                    baseX + width - clip, baseY + depth + cl,
-                    'back-fold'
+                // Multiple fold lines to account for material thickness
+                elements.push(...generateMultiFoldLine(
+                    baseX + clip, baseY + baseD + cl,
+                    baseX + baseW - clip, baseY + baseD + cl,
+                    'back-fold', 'down'
                 ));
 
                 // ============ LEFT WALL (with wings) + INNER PANEL ============
@@ -315,36 +319,37 @@
                     L ${baseX - cl - wingInset} ${baseY - wingH}
                     L ${lwx + wingInset} ${baseY - wingH}
                     L ${lwx} ${baseY}
-                    M ${lwx} ${baseY + depth}
-                    L ${lwx + wingInset} ${baseY + depth + wingH}
-                    L ${baseX - cl - wingInset} ${baseY + depth + wingH}
-                    L ${baseX - cl} ${baseY + depth}
+                    M ${lwx} ${baseY + baseD}
+                    L ${lwx + wingInset} ${baseY + baseD + wingH}
+                    L ${baseX - cl - wingInset} ${baseY + baseD + wingH}
+                    L ${baseX - cl} ${baseY + baseD}
                 `;
                 elements.push(<path key="left-wall" d={leftWallPath} {...cutStyle} />);
 
                 // Connecting lines between wing and front/back walls
                 elements.push(<line key="left-top-connect" x1={baseX - cl} y1={baseY} x2={baseX} y2={baseY} {...cutStyle} />);
-                elements.push(<line key="left-bottom-connect" x1={baseX - cl} y1={baseY + depth} x2={baseX} y2={baseY + depth} {...cutStyle} />);
+                elements.push(<line key="left-bottom-connect" x1={baseX - cl} y1={baseY + baseD} x2={baseX} y2={baseY + baseD} {...cutStyle} />);
 
                 // Left inner panel - right edge is fold (not drawn)
                 const leftInnerPath = `
                     M ${lwx} ${baseY}
                     L ${lwx - innerH} ${baseY}
-                    ${generateVerticalTabEdge(lwx - innerH, baseY, depth, 'left')}
-                    L ${lwx} ${baseY + depth}
+                    ${generateVerticalTabEdge(lwx - innerH, baseY, baseD, 'left')}
+                    L ${lwx} ${baseY + baseD}
                 `;
                 elements.push(<path key="left-inner" d={leftInnerPath} {...cutStyle} />);
 
                 // Fold lines for left wall (base fold offset outward by clearance, clipped)
-                elements.push(...generateDashedLine(
+                // Multiple fold lines to account for material thickness
+                elements.push(...generateMultiFoldLine(
                     baseX - cl, baseY + clip,
-                    baseX - cl, baseY + depth - clip,
-                    'left-fold'
+                    baseX - cl, baseY + baseD - clip,
+                    'left-fold', 'left'
                 ));
                 // Multiple fold lines to account for material thickness
                 elements.push(...generateMultiFoldLine(
                     lwx, baseY + clip,
-                    lwx, baseY + depth - clip,
+                    lwx, baseY + baseD - clip,
                     'left-inner-fold', 'left'
                 ));
                 elements.push(...generateDashedLine(
@@ -353,13 +358,13 @@
                     'left-top-wing-fold'
                 ));
                 elements.push(...generateDashedLine(
-                    lwx + clip, baseY + depth,
-                    baseX - cl - clip, baseY + depth,
+                    lwx + clip, baseY + baseD,
+                    baseX - cl - clip, baseY + baseD,
                     'left-bottom-wing-fold'
                 ));
 
                 // ============ RIGHT WALL (with wings) + INNER PANEL ============
-                const rwx = baseX + width; // left edge of right wall (at base fold)
+                const rwx = baseX + baseW; // left edge of right wall (at base fold)
                 const rwxRight = rwx + height; // right edge of right wall (at inner panel fold)
 
                 // Right wall wings only - aligned with offset fold lines
@@ -368,35 +373,36 @@
                     L ${rwx + cl + wingInset} ${baseY - wingH}
                     L ${rwxRight - wingInset} ${baseY - wingH}
                     L ${rwxRight} ${baseY}
-                    M ${rwxRight} ${baseY + depth}
-                    L ${rwxRight - wingInset} ${baseY + depth + wingH}
-                    L ${rwx + cl + wingInset} ${baseY + depth + wingH}
-                    L ${rwx + cl} ${baseY + depth}
+                    M ${rwxRight} ${baseY + baseD}
+                    L ${rwxRight - wingInset} ${baseY + baseD + wingH}
+                    L ${rwx + cl + wingInset} ${baseY + baseD + wingH}
+                    L ${rwx + cl} ${baseY + baseD}
                 `;
                 elements.push(<path key="right-wall" d={rightWallPath} {...cutStyle} />);
 
                 // Connecting lines between wing and front/back walls
                 elements.push(<line key="right-top-connect" x1={rwx} y1={baseY} x2={rwx + cl} y2={baseY} {...cutStyle} />);
-                elements.push(<line key="right-bottom-connect" x1={rwx} y1={baseY + depth} x2={rwx + cl} y2={baseY + depth} {...cutStyle} />);
+                elements.push(<line key="right-bottom-connect" x1={rwx} y1={baseY + baseD} x2={rwx + cl} y2={baseY + baseD} {...cutStyle} />);
 
                 // Right inner panel - left edge is fold (not drawn)
                 const rightInnerPath = `
                     M ${rwxRight} ${baseY}
                     L ${rwxRight + innerH} ${baseY}
-                    ${generateVerticalTabEdge(rwxRight + innerH, baseY, depth, 'right')}
-                    L ${rwxRight} ${baseY + depth}
+                    ${generateVerticalTabEdge(rwxRight + innerH, baseY, baseD, 'right')}
+                    L ${rwxRight} ${baseY + baseD}
                 `;
                 elements.push(<path key="right-inner" d={rightInnerPath} {...cutStyle} />);
 
-                elements.push(...generateDashedLine(
+                // Multiple fold lines to account for material thickness
+                elements.push(...generateMultiFoldLine(
                     rwx + cl, baseY + clip,
-                    rwx + cl, baseY + depth - clip,
-                    'right-fold'
+                    rwx + cl, baseY + baseD - clip,
+                    'right-fold', 'right'
                 ));
                 // Multiple fold lines to account for material thickness
                 elements.push(...generateMultiFoldLine(
                     rwxRight, baseY + clip,
-                    rwxRight, baseY + depth - clip,
+                    rwxRight, baseY + baseD - clip,
                     'right-inner-fold', 'right'
                 ));
                 elements.push(...generateDashedLine(
@@ -405,22 +411,22 @@
                     'right-top-wing-fold'
                 ));
                 elements.push(...generateDashedLine(
-                    rwx + cl + clip, baseY + depth,
-                    rwxRight - clip, baseY + depth,
+                    rwx + cl + clip, baseY + baseD,
+                    rwxRight - clip, baseY + baseD,
                     'right-bottom-wing-fold'
                 ));
 
                 // ============ SLOTS IN BASE ============
-                elements.push(...generateSlots(baseX, baseY, width, 'horizontal').map((el, i) =>
+                elements.push(...generateSlots(baseX, baseY, baseW, 'horizontal').map((el, i) =>
                     React.cloneElement(el, { key: `base-front-slot-${i}` })
                 ));
-                elements.push(...generateSlots(baseX, baseY + depth - mt, width, 'horizontal').map((el, i) =>
+                elements.push(...generateSlots(baseX, baseY + baseD - mt, baseW, 'horizontal').map((el, i) =>
                     React.cloneElement(el, { key: `base-back-slot-${i}` })
                 ));
-                elements.push(...generateSlots(baseX, baseY, depth, 'vertical').map((el, i) =>
+                elements.push(...generateSlots(baseX, baseY, baseD, 'vertical').map((el, i) =>
                     React.cloneElement(el, { key: `base-left-slot-${i}` })
                 ));
-                elements.push(...generateSlots(baseX + width - mt, baseY, depth, 'vertical').map((el, i) =>
+                elements.push(...generateSlots(baseX + baseW - mt, baseY, baseD, 'vertical').map((el, i) =>
                     React.cloneElement(el, { key: `base-right-slot-${i}` })
                 ));
 
@@ -431,8 +437,9 @@
                 const elements = [];
 
                 // Lid is slightly larger to fit over the box
-                const lidW = width + 2 * mt + lidClearance;
-                const lidD = depth + 2 * mt + lidClearance;
+                // Box base is (width + 2*mt) × (depth + 2*mt), lid needs clearance over that
+                const lidW = width + 4 * mt + lidClearance;
+                const lidD = depth + 4 * mt + lidClearance;
                 const lh = lidHeight;
                 const innerH = lh - mt;
                 const wingH = lidWingLength; // separate wing length for lid
@@ -458,10 +465,11 @@
                     baseX + lidW - clip, baseY - lh,
                     'lid-front-inner-fold', 'up'
                 ));
-                elements.push(...generateDashedLine(
+                // Multiple fold lines to account for material thickness
+                elements.push(...generateMultiFoldLine(
                     baseX + clip, baseY - cl,
                     baseX + lidW - clip, baseY - cl,
-                    'lid-front-fold'
+                    'lid-front-fold', 'up'
                 ));
 
                 // ============ BACK LID WALL + INNER ============
@@ -480,10 +488,11 @@
                     baseX + lidW - clip, baseY + lidD + lh,
                     'lid-back-inner-fold', 'down'
                 ));
-                elements.push(...generateDashedLine(
+                // Multiple fold lines to account for material thickness
+                elements.push(...generateMultiFoldLine(
                     baseX + clip, baseY + lidD + cl,
                     baseX + lidW - clip, baseY + lidD + cl,
-                    'lid-back-fold'
+                    'lid-back-fold', 'down'
                 ));
 
                 // ============ LEFT LID WALL + INNER ============
@@ -514,10 +523,11 @@
                 `;
                 elements.push(<path key="lid-left-inner" d={leftLidInnerPath} {...cutStyle} />);
 
-                elements.push(...generateDashedLine(
+                // Multiple fold lines to account for material thickness
+                elements.push(...generateMultiFoldLine(
                     baseX - cl, baseY + clip,
                     baseX - cl, baseY + lidD - clip,
-                    'lid-left-fold'
+                    'lid-left-fold', 'left'
                 ));
                 // Multiple fold lines to account for material thickness
                 elements.push(...generateMultiFoldLine(
@@ -565,10 +575,11 @@
                 `;
                 elements.push(<path key="lid-right-inner" d={rightLidInnerPath} {...cutStyle} />);
 
-                elements.push(...generateDashedLine(
+                // Multiple fold lines to account for material thickness
+                elements.push(...generateMultiFoldLine(
                     rlwx + cl, baseY + clip,
                     rlwx + cl, baseY + lidD - clip,
-                    'lid-right-fold'
+                    'lid-right-fold', 'right'
                 ));
                 // Multiple fold lines to account for material thickness
                 elements.push(...generateMultiFoldLine(
@@ -607,11 +618,13 @@
             // Calculate total pattern sizes
             const innerH = height - mt;
             const wingH = wingLength;
-            const bottomWidth = (height + innerH + mt) * 2 + width;
-            const bottomHeight = (height + innerH + mt + wingH) * 2 + depth;
+            const baseW = width + 2 * mt; // base width accounting for inner panels
+            const baseD = depth + 2 * mt; // base depth accounting for inner panels
+            const bottomWidth = (height + innerH + mt) * 2 + baseW;
+            const bottomHeight = (height + innerH + mt + wingH) * 2 + baseD;
 
-            const lidW = width + 2 * mt + lidClearance;
-            const lidD = depth + 2 * mt + lidClearance;
+            const lidW = width + 4 * mt + lidClearance; // fits over box base + walls
+            const lidD = depth + 4 * mt + lidClearance;
             const lidInnerH = lidHeight - mt;
             const lidWingH = lidWingLength;
             const lidTotalWidth = (lidHeight + lidInnerH + mt) * 2 + lidW;
