@@ -275,11 +275,10 @@
                     'front-inner-fold', 'up'
                 ));
                 // Fold line between base and front wall (offset outward by clearance, clipped)
-                // Multiple fold lines to account for material thickness
-                elements.push(...generateMultiFoldLine(
+                elements.push(...generateDashedLine(
                     baseX + clip, baseY - cl,
                     baseX + width - clip, baseY - cl,
-                    'front-fold', 'up'
+                    'front-fold'
                 ));
 
                 // ============ BACK WALL + INNER PANEL ============
@@ -299,11 +298,10 @@
                     baseX + width - clip, baseY + depth + height,
                     'back-inner-fold', 'down'
                 ));
-                // Multiple fold lines to account for material thickness
-                elements.push(...generateMultiFoldLine(
+                elements.push(...generateDashedLine(
                     baseX + clip, baseY + depth + cl,
                     baseX + width - clip, baseY + depth + cl,
-                    'back-fold', 'down'
+                    'back-fold'
                 ));
 
                 // ============ LEFT WALL (with wings) + INNER PANEL ============
@@ -338,11 +336,10 @@
                 elements.push(<path key="left-inner" d={leftInnerPath} {...cutStyle} />);
 
                 // Fold lines for left wall (base fold offset outward by clearance, clipped)
-                // Multiple fold lines to account for material thickness
-                elements.push(...generateMultiFoldLine(
+                elements.push(...generateDashedLine(
                     baseX - cl, baseY + clip,
                     baseX - cl, baseY + depth - clip,
-                    'left-fold', 'left'
+                    'left-fold'
                 ));
                 // Multiple fold lines to account for material thickness
                 elements.push(...generateMultiFoldLine(
@@ -391,11 +388,10 @@
                 `;
                 elements.push(<path key="right-inner" d={rightInnerPath} {...cutStyle} />);
 
-                // Multiple fold lines to account for material thickness
-                elements.push(...generateMultiFoldLine(
+                elements.push(...generateDashedLine(
                     rwx + cl, baseY + clip,
                     rwx + cl, baseY + depth - clip,
-                    'right-fold', 'right'
+                    'right-fold'
                 ));
                 // Multiple fold lines to account for material thickness
                 elements.push(...generateMultiFoldLine(
@@ -462,11 +458,10 @@
                     baseX + lidW - clip, baseY - lh,
                     'lid-front-inner-fold', 'up'
                 ));
-                // Multiple fold lines to account for material thickness
-                elements.push(...generateMultiFoldLine(
+                elements.push(...generateDashedLine(
                     baseX + clip, baseY - cl,
                     baseX + lidW - clip, baseY - cl,
-                    'lid-front-fold', 'up'
+                    'lid-front-fold'
                 ));
 
                 // ============ BACK LID WALL + INNER ============
@@ -485,11 +480,10 @@
                     baseX + lidW - clip, baseY + lidD + lh,
                     'lid-back-inner-fold', 'down'
                 ));
-                // Multiple fold lines to account for material thickness
-                elements.push(...generateMultiFoldLine(
+                elements.push(...generateDashedLine(
                     baseX + clip, baseY + lidD + cl,
                     baseX + lidW - clip, baseY + lidD + cl,
-                    'lid-back-fold', 'down'
+                    'lid-back-fold'
                 ));
 
                 // ============ LEFT LID WALL + INNER ============
@@ -520,11 +514,10 @@
                 `;
                 elements.push(<path key="lid-left-inner" d={leftLidInnerPath} {...cutStyle} />);
 
-                // Multiple fold lines to account for material thickness
-                elements.push(...generateMultiFoldLine(
+                elements.push(...generateDashedLine(
                     baseX - cl, baseY + clip,
                     baseX - cl, baseY + lidD - clip,
-                    'lid-left-fold', 'left'
+                    'lid-left-fold'
                 ));
                 // Multiple fold lines to account for material thickness
                 elements.push(...generateMultiFoldLine(
@@ -572,11 +565,10 @@
                 `;
                 elements.push(<path key="lid-right-inner" d={rightLidInnerPath} {...cutStyle} />);
 
-                // Multiple fold lines to account for material thickness
-                elements.push(...generateMultiFoldLine(
+                elements.push(...generateDashedLine(
                     rlwx + cl, baseY + clip,
                     rlwx + cl, baseY + lidD - clip,
-                    'lid-right-fold', 'right'
+                    'lid-right-fold'
                 ));
                 // Multiple fold lines to account for material thickness
                 elements.push(...generateMultiFoldLine(
