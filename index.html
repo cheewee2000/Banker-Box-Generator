@@ -329,6 +329,9 @@
                 // Connecting lines between wing and front/back walls
                 elements.push(<line key="left-top-connect" x1={baseX - cl} y1={baseY} x2={baseX} y2={baseY} {...cutStyle} />);
                 elements.push(<line key="left-bottom-connect" x1={baseX - cl} y1={baseY + baseD} x2={baseX} y2={baseY + baseD} {...cutStyle} />);
+                // Connecting lines between wings and inner panel (outer edge of wall)
+                elements.push(<line key="left-outer-top" x1={lwx} y1={baseY} x2={lwx} y2={baseY + mt} {...cutStyle} />);
+                elements.push(<line key="left-outer-bottom" x1={lwx} y1={baseY + baseD - mt} x2={lwx} y2={baseY + baseD} {...cutStyle} />);
 
                 // Left inner panel - right edge is fold (not drawn)
                 // Shortened by mt on each end to not collide with front/back inner panels
@@ -385,6 +388,9 @@
                 // Connecting lines between wing and front/back walls
                 elements.push(<line key="right-top-connect" x1={rwx} y1={baseY} x2={rwx + cl} y2={baseY} {...cutStyle} />);
                 elements.push(<line key="right-bottom-connect" x1={rwx} y1={baseY + baseD} x2={rwx + cl} y2={baseY + baseD} {...cutStyle} />);
+                // Connecting lines between wings and inner panel (outer edge of wall)
+                elements.push(<line key="right-outer-top" x1={rwxRight} y1={baseY} x2={rwxRight} y2={baseY + mt} {...cutStyle} />);
+                elements.push(<line key="right-outer-bottom" x1={rwxRight} y1={baseY + baseD - mt} x2={rwxRight} y2={baseY + baseD} {...cutStyle} />);
 
                 // Right inner panel - left edge is fold (not drawn)
                 // Shortened by mt on each end to not collide with front/back inner panels
@@ -518,6 +524,9 @@
                 // Connecting lines between wing and front/back walls
                 elements.push(<line key="lid-left-top-connect" x1={baseX - cl} y1={baseY} x2={baseX} y2={baseY} {...cutStyle} />);
                 elements.push(<line key="lid-left-bottom-connect" x1={baseX - cl} y1={baseY + lidD} x2={baseX} y2={baseY + lidD} {...cutStyle} />);
+                // Connecting lines between wings and inner panel (outer edge of wall)
+                elements.push(<line key="lid-left-outer-top" x1={llwx} y1={baseY} x2={llwx} y2={baseY + mt} {...cutStyle} />);
+                elements.push(<line key="lid-left-outer-bottom" x1={llwx} y1={baseY + lidD - mt} x2={llwx} y2={baseY + lidD} {...cutStyle} />);
 
                 // Shortened by mt on each end to not collide with front/back inner panels
                 const leftLidInnerPath = `
@@ -572,6 +581,9 @@
                 // Connecting lines between wing and front/back walls
                 elements.push(<line key="lid-right-top-connect" x1={rlwx} y1={baseY} x2={rlwx + cl} y2={baseY} {...cutStyle} />);
                 elements.push(<line key="lid-right-bottom-connect" x1={rlwx} y1={baseY + lidD} x2={rlwx + cl} y2={baseY + lidD} {...cutStyle} />);
+                // Connecting lines between wings and inner panel (outer edge of wall)
+                elements.push(<line key="lid-right-outer-top" x1={rlwxRight} y1={baseY} x2={rlwxRight} y2={baseY + mt} {...cutStyle} />);
+                elements.push(<line key="lid-right-outer-bottom" x1={rlwxRight} y1={baseY + lidD - mt} x2={rlwxRight} y2={baseY + lidD} {...cutStyle} />);
 
                 // Shortened by mt on each end to not collide with front/back inner panels
                 const rightLidInnerPath = `
