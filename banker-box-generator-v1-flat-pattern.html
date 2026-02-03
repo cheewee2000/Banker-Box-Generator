@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Banker Box Die Cut Pattern Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useRef, useCallback } = React;
+
+        const BankerBoxGenerator = () => {
+            const [dimensions, setDimensions] = useState({
+                width: 150,
+                depth: 100,
+                height: 80,
+                lidHeight: 25,
+                materialThickness: 2,
+                tabWidth: 15,
+                tabSpacing: 30,
+                clearance: 0.5,
+                wingInset: 3,
+            });
+
+            const [exportMode, setExportMode] = useState('screen');
+            const [showLid, setShowLid] = useState(true);
+            const [showBottom, setShowBottom] = useState(true);
+
+            const svgRef = useRef(null);
+
+            const { width, depth, height, lidHeight, materialThickness, tabWidth, tabSpacing, clearance, wingInset } = dimensions;
+
+            const mt = materialThickness;
+            const lidClearance = clearance * 2;
+
+            const cutStyle = { stroke: '#000000', strokeWidth: 0.5, fill: 'none' };
+            const foldStyle = exportMode === 'laser'
+                ? { stroke: '#000000', strokeWidth: 0.5, fill: 'none', strokeDasharray: '5,3' }
+                : { stroke: '#FF0000', strokeWidth: 0.5, fill: 'none' };
+
+            // Calculate centered tab positions for an edge
+            const calculateTabPositions = (edgeLength) => {
+                if (edgeLength < tabWidth) return null;
+
+                const numTabs = Math.max(1, Math.floor((edgeLength + tabSpacing) / (tabWidth + tabSpacing)));
+
+                if (numTabs === 1) {
+                    return { numTabs: 1, positions: [(edgeLength - tabWidth) / 2] };
+                }
+
+                const totalTabWidth = numTabs * tabWidth;
+                const gap = (edgeLength - totalTabWidth) / (numTabs + 1);
+                const positions = [];
+                for (let i = 0; i < numTabs; i++) {
+                    positions.push(gap + i * (tabWidth + gap));
+                }
+                return { numTabs, positions };
+            };
+
+            // Generate tab edge path segment (for inner panels with protruding tabs)
+            const generateTabEdge = (startX, y, edgeWidth, direction) => {
+                const tabInfo = calculateTabPositions(edgeWidth);
+                if (!tabInfo) return `L ${startX + edgeWidth} ${y}`;
+
+                let path = '';
+                let currentX = startX;
+
+                for (let i = 0; i < tabInfo.numTabs; i++) {
+                    const tabX = startX + tabInfo.positions[i];
+                    path += ` L ${tabX} ${y}`;
+                    if (direction === 'up') {
+                        path += ` L ${tabX} ${y - mt}`;
+                        path += ` L ${tabX + tabWidth} ${y - mt}`;
+                    } else {
+                        path += ` L ${tabX} ${y + mt}`;
+                        path += ` L ${tabX + tabWidth} ${y + mt}`;
+                    }
+                    path += ` L ${tabX + tabWidth} ${y}`;
+                }
+                path += ` L ${startX + edgeWidth} ${y}`;
+                return path;
+            };
+
+            // Generate vertical tab edge path segment
+            const generateVerticalTabEdge = (x, startY, edgeHeight, direction) => {
+                const tabInfo = calculateTabPositions(edgeHeight);
+                if (!tabInfo) return `L ${x} ${startY + edgeHeight}`;
+
+                let path = '';
+
+                for (let i = 0; i < tabInfo.numTabs; i++) {
+                    const tabY = startY + tabInfo.positions[i];
+                    path += ` L ${x} ${tabY}`;
+                    if (direction === 'left') {
+                        path += ` L ${x - mt} ${tabY}`;
+                        path += ` L ${x - mt} ${tabY + tabWidth}`;
+                    } else {
+                        path += ` L ${x + mt} ${tabY}`;
+                        path += ` L ${x + mt} ${tabY + tabWidth}`;
+                    }
+                    path += ` L ${x} ${tabY + tabWidth}`;
+                }
+                path += ` L ${x} ${startY + edgeHeight}`;
+                return path;
+            };
+
+            // Generate slots in base panel
+            const generateSlots = (startX, startY, length, direction) => {
+                const tabInfo = calculateTabPositions(length);
+                if (!tabInfo) return [];
+
+                const paths = [];
+                const sc = clearance; // slot clearance
+
+                for (let i = 0; i < tabInfo.numTabs; i++) {
+                    const offset = tabInfo.positions[i];
+                    if (direction === 'horizontal') {
+                        paths.push(
+                            <rect key={`slot-${i}`}
+                                x={startX + offset - sc}
+                                y={startY - sc/2}
+                                width={tabWidth + 2*sc}
+                                height={mt + sc}
+                                {...cutStyle} />
+                        );
+                    } else {
+                        paths.push(
+                            <rect key={`slot-${i}`}
+                                x={startX - sc/2}
+                                y={startY + offset - sc}
+                                width={mt + sc}
+                                height={tabWidth + 2*sc}
+                                {...cutStyle} />
+                        );
+                    }
+                }
+                return paths;
+            };
+
+            const generateBottomBox = (offsetX, offsetY) => {
+                const elements = [];
+
+                // Interior dimensions are the reference
+                // Outer wall height = height (reaches from base to top of interior)
+                // Inner panel height = height - mt (folds back inside)
+                const innerH = height - mt;
+                const wingH = height - mt - wingInset; // wing depth
+
+                // Layout offsets - position base so everything fits
+                const baseX = offsetX + height + innerH + mt; // space for left wall + inner + tabs
+                const baseY = offsetY + height + innerH + mt + wingH; // space for front wall + inner + tabs + wing
+
+                // ============ FRONT WALL + INNER PANEL ============
+                // One continuous path from bottom-left to bottom-right (open at bottom for fold)
+                const frontPath = `
+                    M ${baseX} ${baseY}
+                    L ${baseX} ${baseY - height}
+                    L ${baseX} ${baseY - height - innerH}
+                    ${generateTabEdge(baseX, baseY - height - innerH, width, 'up')}
+                    L ${baseX + width} ${baseY - height}
+                    L ${baseX + width} ${baseY}
+                `;
+                elements.push(<path key="front-wall-inner" d={frontPath} {...cutStyle} />);
+
+                // Fold line between front wall and inner panel
+                elements.push(
+                    <line key="front-inner-fold"
+                        x1={baseX} y1={baseY - height}
+                        x2={baseX + width} y2={baseY - height}
+                        {...foldStyle} />
+                );
+                // Fold line between base and front wall
+                elements.push(
+                    <line key="front-fold"
+                        x1={baseX} y1={baseY}
+                        x2={baseX + width} y2={baseY}
+                        {...foldStyle} />
+                );
+
+                // ============ BACK WALL + INNER PANEL ============
+                const backPath = `
+                    M ${baseX} ${baseY + depth}
+                    L ${baseX} ${baseY + depth + height}
+                    L ${baseX} ${baseY + depth + height + innerH}
+                    ${generateTabEdge(baseX, baseY + depth + height + innerH, width, 'down')}
+                    L ${baseX + width} ${baseY + depth + height}
+                    L ${baseX + width} ${baseY + depth}
+                `;
+                elements.push(<path key="back-wall-inner" d={backPath} {...cutStyle} />);
+
+                elements.push(
+                    <line key="back-inner-fold"
+                        x1={baseX} y1={baseY + depth + height}
+                        x2={baseX + width} y2={baseY + depth + height}
+                        {...foldStyle} />
+                );
+                elements.push(
+                    <line key="back-fold"
+                        x1={baseX} y1={baseY + depth}
+                        x2={baseX + width} y2={baseY + depth}
+                        {...foldStyle} />
+                );
+
+                // ============ LEFT WALL (with wings) + INNER PANEL ============
+                const lwx = baseX - height; // left edge of left wall
+
+                // Left wall wings only - the left and right edges are both folds
+                // Top wing: from fold (baseX) to fold (lwx), wing extends upward
+                // Bottom wing: same pattern
+                const leftWallPath = `
+                    M ${baseX} ${baseY}
+                    L ${baseX - wingInset} ${baseY - wingH}
+                    L ${lwx + wingInset} ${baseY - wingH}
+                    L ${lwx} ${baseY}
+                    M ${lwx} ${baseY + depth}
+                    L ${lwx + wingInset} ${baseY + depth + wingH}
+                    L ${baseX - wingInset} ${baseY + depth + wingH}
+                    L ${baseX} ${baseY + depth}
+                `;
+                elements.push(<path key="left-wall" d={leftWallPath} {...cutStyle} />);
+
+                // Left inner panel - right edge is fold (not drawn)
+                const leftInnerPath = `
+                    M ${lwx} ${baseY}
+                    L ${lwx - innerH} ${baseY}
+                    ${generateVerticalTabEdge(lwx - innerH, baseY, depth, 'left')}
+                    L ${lwx} ${baseY + depth}
+                `;
+                elements.push(<path key="left-inner" d={leftInnerPath} {...cutStyle} />);
+
+                // Fold lines for left wall
+                elements.push(
+                    <line key="left-fold" x1={baseX} y1={baseY} x2={baseX} y2={baseY + depth} {...foldStyle} />
+                );
+                elements.push(
+                    <line key="left-inner-fold" x1={lwx} y1={baseY} x2={lwx} y2={baseY + depth} {...foldStyle} />
+                );
+                elements.push(
+                    <line key="left-top-wing-fold" x1={lwx} y1={baseY} x2={baseX} y2={baseY} {...foldStyle} />
+                );
+                elements.push(
+                    <line key="left-bottom-wing-fold" x1={lwx} y1={baseY + depth} x2={baseX} y2={baseY + depth} {...foldStyle} />
+                );
+
+                // ============ RIGHT WALL (with wings) + INNER PANEL ============
+                const rwx = baseX + width; // left edge of right wall (at base fold)
+                const rwxRight = rwx + height; // right edge of right wall (at inner panel fold)
+
+                // Right wall wings only - left edge is fold to base, right edge is fold to inner panel
+                const rightWallPath = `
+                    M ${rwx} ${baseY}
+                    L ${rwx + wingInset} ${baseY - wingH}
+                    L ${rwxRight - wingInset} ${baseY - wingH}
+                    L ${rwxRight} ${baseY}
+                    M ${rwxRight} ${baseY + depth}
+                    L ${rwxRight - wingInset} ${baseY + depth + wingH}
+                    L ${rwx + wingInset} ${baseY + depth + wingH}
+                    L ${rwx} ${baseY + depth}
+                `;
+                elements.push(<path key="right-wall" d={rightWallPath} {...cutStyle} />);
+
+                // Right inner panel - left edge is fold (not drawn)
+                const rightInnerPath = `
+                    M ${rwxRight} ${baseY}
+                    L ${rwxRight + innerH} ${baseY}
+                    ${generateVerticalTabEdge(rwxRight + innerH, baseY, depth, 'right')}
+                    L ${rwxRight} ${baseY + depth}
+                `;
+                elements.push(<path key="right-inner" d={rightInnerPath} {...cutStyle} />);
+
+                elements.push(
+                    <line key="right-fold" x1={rwx} y1={baseY} x2={rwx} y2={baseY + depth} {...foldStyle} />
+                );
+                elements.push(
+                    <line key="right-inner-fold" x1={rwxRight} y1={baseY} x2={rwxRight} y2={baseY + depth} {...foldStyle} />
+                );
+                elements.push(
+                    <line key="right-top-wing-fold" x1={rwx} y1={baseY} x2={rwxRight} y2={baseY} {...foldStyle} />
+                );
+                elements.push(
+                    <line key="right-bottom-wing-fold" x1={rwx} y1={baseY + depth} x2={rwxRight} y2={baseY + depth} {...foldStyle} />
+                );
+
+                // ============ SLOTS IN BASE ============
+                elements.push(...generateSlots(baseX, baseY, width, 'horizontal').map((el, i) =>
+                    React.cloneElement(el, { key: `base-front-slot-${i}` })
+                ));
+                elements.push(...generateSlots(baseX, baseY + depth - mt, width, 'horizontal').map((el, i) =>
+                    React.cloneElement(el, { key: `base-back-slot-${i}` })
+                ));
+                elements.push(...generateSlots(baseX, baseY, depth, 'vertical').map((el, i) =>
+                    React.cloneElement(el, { key: `base-left-slot-${i}` })
+                ));
+                elements.push(...generateSlots(baseX + width - mt, baseY, depth, 'vertical').map((el, i) =>
+                    React.cloneElement(el, { key: `base-right-slot-${i}` })
+                ));
+
+                return <g key="bottom-box">{elements}</g>;
+            };
+
+            const generateLid = (offsetX, offsetY) => {
+                const elements = [];
+
+                // Lid is slightly larger to fit over the box
+                const lidW = width + 2 * mt + lidClearance;
+                const lidD = depth + 2 * mt + lidClearance;
+                const lh = lidHeight;
+                const innerH = lh - mt;
+                const wingH = lh - mt - wingInset;
+
+                const baseX = offsetX + lh + innerH + mt;
+                const baseY = offsetY + lh + innerH + mt + wingH;
+
+                // ============ FRONT LID WALL + INNER ============
+                const frontPath = `
+                    M ${baseX} ${baseY}
+                    L ${baseX} ${baseY - lh}
+                    L ${baseX} ${baseY - lh - innerH}
+                    ${generateTabEdge(baseX, baseY - lh - innerH, lidW, 'up')}
+                    L ${baseX + lidW} ${baseY - lh}
+                    L ${baseX + lidW} ${baseY}
+                `;
+                elements.push(<path key="lid-front" d={frontPath} {...cutStyle} />);
+                elements.push(
+                    <line key="lid-front-inner-fold" x1={baseX} y1={baseY - lh} x2={baseX + lidW} y2={baseY - lh} {...foldStyle} />
+                );
+                elements.push(
+                    <line key="lid-front-fold" x1={baseX} y1={baseY} x2={baseX + lidW} y2={baseY} {...foldStyle} />
+                );
+
+                // ============ BACK LID WALL + INNER ============
+                const backPath = `
+                    M ${baseX} ${baseY + lidD}
+                    L ${baseX} ${baseY + lidD + lh}
+                    L ${baseX} ${baseY + lidD + lh + innerH}
+                    ${generateTabEdge(baseX, baseY + lidD + lh + innerH, lidW, 'down')}
+                    L ${baseX + lidW} ${baseY + lidD + lh}
+                    L ${baseX + lidW} ${baseY + lidD}
+                `;
+                elements.push(<path key="lid-back" d={backPath} {...cutStyle} />);
+                elements.push(
+                    <line key="lid-back-inner-fold" x1={baseX} y1={baseY + lidD + lh} x2={baseX + lidW} y2={baseY + lidD + lh} {...foldStyle} />
+                );
+                elements.push(
+                    <line key="lid-back-fold" x1={baseX} y1={baseY + lidD} x2={baseX + lidW} y2={baseY + lidD} {...foldStyle} />
+                );
+
+                // ============ LEFT LID WALL + INNER ============
+                const llwx = baseX - lh;
+
+                // Left lid wall wings only
+                const leftLidWallPath = `
+                    M ${baseX} ${baseY}
+                    L ${baseX - wingInset} ${baseY - wingH}
+                    L ${llwx + wingInset} ${baseY - wingH}
+                    L ${llwx} ${baseY}
+                    M ${llwx} ${baseY + lidD}
+                    L ${llwx + wingInset} ${baseY + lidD + wingH}
+                    L ${baseX - wingInset} ${baseY + lidD + wingH}
+                    L ${baseX} ${baseY + lidD}
+                `;
+                elements.push(<path key="lid-left-wall" d={leftLidWallPath} {...cutStyle} />);
+
+                const leftLidInnerPath = `
+                    M ${llwx} ${baseY}
+                    L ${llwx - innerH} ${baseY}
+                    ${generateVerticalTabEdge(llwx - innerH, baseY, lidD, 'left')}
+                    L ${llwx} ${baseY + lidD}
+                `;
+                elements.push(<path key="lid-left-inner" d={leftLidInnerPath} {...cutStyle} />);
+
+                elements.push(
+                    <line key="lid-left-fold" x1={baseX} y1={baseY} x2={baseX} y2={baseY + lidD} {...foldStyle} />
+                );
+                elements.push(
+                    <line key="lid-left-inner-fold" x1={llwx} y1={baseY} x2={llwx} y2={baseY + lidD} {...foldStyle} />
+                );
+                elements.push(
+                    <line key="lid-left-top-wing-fold" x1={llwx} y1={baseY} x2={baseX} y2={baseY} {...foldStyle} />
+                );
+                elements.push(
+                    <line key="lid-left-bottom-wing-fold" x1={llwx} y1={baseY + lidD} x2={baseX} y2={baseY + lidD} {...foldStyle} />
+                );
+
+                // ============ RIGHT LID WALL + INNER ============
+                const rlwx = baseX + lidW;
+                const rlwxRight = rlwx + lh;
+
+                // Right lid wall wings only
+                const rightLidWallPath = `
+                    M ${rlwx} ${baseY}
+                    L ${rlwx + wingInset} ${baseY - wingH}
+                    L ${rlwxRight - wingInset} ${baseY - wingH}
+                    L ${rlwxRight} ${baseY}
+                    M ${rlwxRight} ${baseY + lidD}
+                    L ${rlwxRight - wingInset} ${baseY + lidD + wingH}
+                    L ${rlwx + wingInset} ${baseY + lidD + wingH}
+                    L ${rlwx} ${baseY + lidD}
+                `;
+                elements.push(<path key="lid-right-wall" d={rightLidWallPath} {...cutStyle} />);
+
+                const rightLidInnerPath = `
+                    M ${rlwxRight} ${baseY}
+                    L ${rlwxRight + innerH} ${baseY}
+                    ${generateVerticalTabEdge(rlwxRight + innerH, baseY, lidD, 'right')}
+                    L ${rlwxRight} ${baseY + lidD}
+                `;
+                elements.push(<path key="lid-right-inner" d={rightLidInnerPath} {...cutStyle} />);
+
+                elements.push(
+                    <line key="lid-right-fold" x1={rlwx} y1={baseY} x2={rlwx} y2={baseY + lidD} {...foldStyle} />
+                );
+                elements.push(
+                    <line key="lid-right-inner-fold" x1={rlwxRight} y1={baseY} x2={rlwxRight} y2={baseY + lidD} {...foldStyle} />
+                );
+                elements.push(
+                    <line key="lid-right-top-wing-fold" x1={rlwx} y1={baseY} x2={rlwxRight} y2={baseY} {...foldStyle} />
+                );
+                elements.push(
+                    <line key="lid-right-bottom-wing-fold" x1={rlwx} y1={baseY + lidD} x2={rlwxRight} y2={baseY + lidD} {...foldStyle} />
+                );
+
+                // ============ SLOTS IN LID ============
+                elements.push(...generateSlots(baseX, baseY, lidW, 'horizontal').map((el, i) =>
+                    React.cloneElement(el, { key: `lid-front-slot-${i}` })
+                ));
+                elements.push(...generateSlots(baseX, baseY + lidD - mt, lidW, 'horizontal').map((el, i) =>
+                    React.cloneElement(el, { key: `lid-back-slot-${i}` })
+                ));
+                elements.push(...generateSlots(baseX, baseY, lidD, 'vertical').map((el, i) =>
+                    React.cloneElement(el, { key: `lid-left-slot-${i}` })
+                ));
+                elements.push(...generateSlots(baseX + lidW - mt, baseY, lidD, 'vertical').map((el, i) =>
+                    React.cloneElement(el, { key: `lid-right-slot-${i}` })
+                ));
+
+                return <g key="lid">{elements}</g>;
+            };
+
+            // Calculate total pattern sizes
+            const innerH = height - mt;
+            const wingH = height - mt - wingInset;
+            const bottomWidth = (height + innerH + mt) * 2 + width;
+            const bottomHeight = (height + innerH + mt + wingH) * 2 + depth;
+
+            const lidW = width + 2 * mt + lidClearance;
+            const lidD = depth + 2 * mt + lidClearance;
+            const lidInnerH = lidHeight - mt;
+            const lidWingH = lidHeight - mt - wingInset;
+            const lidTotalWidth = (lidHeight + lidInnerH + mt) * 2 + lidW;
+            const lidTotalHeight = (lidHeight + lidInnerH + mt + lidWingH) * 2 + lidD;
+
+            const padding = 50;
+            const svgWidth = Math.max(showBottom ? bottomWidth : 0, showLid ? lidTotalWidth : 0) + 2 * padding;
+            const svgHeight = (showBottom ? bottomHeight : 0) + (showLid ? lidTotalHeight : 0) + (showBottom && showLid ? padding : 0) + 2 * padding;
+
+            const exportSVG = useCallback(() => {
+                const svgElement = svgRef.current;
+                if (!svgElement) return;
+
+                const serializer = new XMLSerializer();
+                let svgString = serializer.serializeToString(svgElement);
+                svgString = '<?xml version="1.0" encoding="UTF-8"?>\n' + svgString;
+
+                const blob = new Blob([svgString], { type: 'image/svg+xml' });
+                const url = URL.createObjectURL(blob);
+
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `banker-box-${width}x${depth}x${height}mm-${exportMode}.svg`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }, [width, depth, height, exportMode]);
+
+            const handleDimensionChange = (key, value) => {
+                const numValue = parseFloat(value) || 0;
+                setDimensions(prev => ({ ...prev, [key]: numValue }));
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-100 p-6">
+                    <div className="max-w-7xl mx-auto">
+                        <h1 className="text-3xl font-bold text-gray-800 mb-6">Banker Box Die Cut Pattern Generator</h1>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <div className="bg-white rounded-lg shadow-lg p-6 overflow-y-auto" style={{maxHeight: '90vh'}}>
+                                <h2 className="text-xl font-semibold mb-4">Interior Dimensions (mm)</h2>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Inside Width</label>
+                                        <input type="number" value={dimensions.width} onChange={(e) => handleDimensionChange('width', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Inside Depth</label>
+                                        <input type="number" value={dimensions.depth} onChange={(e) => handleDimensionChange('depth', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Inside Height</label>
+                                        <input type="number" value={dimensions.height} onChange={(e) => handleDimensionChange('height', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Lid Wall Height</label>
+                                        <input type="number" value={dimensions.lidHeight} onChange={(e) => handleDimensionChange('lidHeight', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+
+                                    <hr className="my-4" />
+                                    <h3 className="text-lg font-medium">Advanced Settings</h3>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Material Thickness</label>
+                                        <input type="number" step="0.1" value={dimensions.materialThickness} onChange={(e) => handleDimensionChange('materialThickness', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Tab Width</label>
+                                        <input type="number" value={dimensions.tabWidth} onChange={(e) => handleDimensionChange('tabWidth', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Tab Spacing</label>
+                                        <input type="number" value={dimensions.tabSpacing} onChange={(e) => handleDimensionChange('tabSpacing', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Assembly Clearance</label>
+                                        <input type="number" step="0.1" value={dimensions.clearance} onChange={(e) => handleDimensionChange('clearance', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Wing Corner Inset</label>
+                                        <input type="number" step="0.5" value={dimensions.wingInset} onChange={(e) => handleDimensionChange('wingInset', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+
+                                    <hr className="my-4" />
+                                    <h3 className="text-lg font-medium">Display</h3>
+                                    <div className="flex items-center gap-4">
+                                        <label className="flex items-center gap-2">
+                                            <input type="checkbox" checked={showBottom} onChange={(e) => setShowBottom(e.target.checked)} className="w-4 h-4" />
+                                            <span className="text-sm">Bottom</span>
+                                        </label>
+                                        <label className="flex items-center gap-2">
+                                            <input type="checkbox" checked={showLid} onChange={(e) => setShowLid(e.target.checked)} className="w-4 h-4" />
+                                            <span className="text-sm">Lid</span>
+                                        </label>
+                                    </div>
+
+                                    <hr className="my-4" />
+                                    <h3 className="text-lg font-medium">Export Mode</h3>
+                                    <div className="space-y-2">
+                                        <label className="flex items-center gap-2">
+                                            <input type="radio" name="exportMode" checked={exportMode === 'screen'} onChange={() => setExportMode('screen')} className="w-4 h-4" />
+                                            <span className="text-sm">Screen (Red fold lines)</span>
+                                        </label>
+                                        <label className="flex items-center gap-2">
+                                            <input type="radio" name="exportMode" checked={exportMode === 'laser'} onChange={() => setExportMode('laser')} className="w-4 h-4" />
+                                            <span className="text-sm">Laser (Dashed fold lines)</span>
+                                        </label>
+                                    </div>
+
+                                    <button onClick={exportSVG} className="w-full mt-4 px-4 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">
+                                        Export SVG
+                                    </button>
+                                </div>
+
+                                <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                                    <h3 className="font-medium mb-2">Legend</h3>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-0.5 bg-black"></div>
+                                            <span>Cut</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {exportMode === 'laser' ? (
+                                                <div className="w-8 h-0.5 border-t-2 border-dashed border-black"></div>
+                                            ) : (
+                                                <div className="w-8 h-0.5 bg-red-500"></div>
+                                            )}
+                                            <span>Fold</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 p-4 bg-blue-50 rounded-lg text-sm">
+                                    <h3 className="font-medium mb-2">Pattern Size</h3>
+                                    <p>Bottom: {bottomWidth.toFixed(1)} × {bottomHeight.toFixed(1)} mm</p>
+                                    <p>Lid: {lidTotalWidth.toFixed(1)} × {lidTotalHeight.toFixed(1)} mm</p>
+                                </div>
+                            </div>
+
+                            <div className="lg:col-span-2 bg-white rounded-lg shadow-lg p-6">
+                                <h2 className="text-xl font-semibold mb-4">Pattern Preview</h2>
+                                <div className="overflow-auto border border-gray-200 rounded-lg bg-gray-50 p-4" style={{ maxHeight: '80vh' }}>
+                                    <svg ref={svgRef} width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`} xmlns="http://www.w3.org/2000/svg" className="bg-white">
+                                        {showBottom && generateBottomBox(padding, padding)}
+                                        {showLid && generateLid(padding, showBottom ? bottomHeight + padding * 2 : padding)}
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-6 bg-white rounded-lg shadow-lg p-6">
+                            <h2 className="text-xl font-semibold mb-4">Assembly</h2>
+                            <div className="grid md:grid-cols-2 gap-6 text-sm">
+                                <div>
+                                    <h3 className="font-medium mb-2">Bottom Box</h3>
+                                    <ol className="list-decimal list-inside space-y-1 text-gray-700">
+                                        <li>Cut along all black lines</li>
+                                        <li>Score all fold lines (red/dashed)</li>
+                                        <li>Fold side walls up, then fold wings inward</li>
+                                        <li>Fold front/back walls up over the wings</li>
+                                        <li>Fold inner panels down and lock tabs into slots</li>
+                                    </ol>
+                                </div>
+                                <div>
+                                    <h3 className="font-medium mb-2">Lid</h3>
+                                    <ol className="list-decimal list-inside space-y-1 text-gray-700">
+                                        <li>Cut along all black lines</li>
+                                        <li>Score all fold lines (red/dashed)</li>
+                                        <li>Fold side walls down, then fold wings inward</li>
+                                        <li>Fold front/back walls down over the wings</li>
+                                        <li>Fold inner panels up and lock tabs into slots</li>
+                                    </ol>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<BankerBoxGenerator />);
+    </script>
+</body>
+</html>

@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Banker Box Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: 'Space Mono', monospace; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useRef, useCallback, useEffect } = React;
+
+        const BankerBoxGenerator = () => {
+            const defaultDimensions = {
+                width: 150,
+                depth: 100,
+                height: 80,
+                lidHeight: 25,
+                materialThickness: 2,
+                tabWidth: 15,
+                tabSpacing: 30,
+                clearance: 0.5,
+                wingInset: 3,
+                wingLength: 40,
+                lidWingLength: 20,
+                dashLength: 5,
+                dashGap: 3,
+            };
+
+            const loadSavedState = () => {
+                try {
+                    const saved = sessionStorage.getItem('bankerBoxState');
+                    if (saved) {
+                        return JSON.parse(saved);
+                    }
+                } catch (e) {}
+                return null;
+            };
+
+            const savedState = loadSavedState();
+
+            const [dimensions, setDimensions] = useState(savedState?.dimensions || defaultDimensions);
+            const [exportMode, setExportMode] = useState(savedState?.exportMode || 'screen');
+            const [showLid, setShowLid] = useState(savedState?.showLid ?? true);
+            const [showBottom, setShowBottom] = useState(savedState?.showBottom ?? true);
+            const [useTabs, setUseTabs] = useState(savedState?.useTabs ?? true);
+
+            // Save state to sessionStorage whenever it changes
+            useEffect(() => {
+                const state = { dimensions, exportMode, showLid, showBottom, useTabs };
+                sessionStorage.setItem('bankerBoxState', JSON.stringify(state));
+            }, [dimensions, exportMode, showLid, showBottom, useTabs]);
+
+            const bottomSvgRef = useRef(null);
+            const lidSvgRef = useRef(null);
+
+            const { width, depth, height, lidHeight, materialThickness, tabWidth, tabSpacing, clearance, wingInset, wingLength, lidWingLength, dashLength, dashGap } = dimensions;
+
+            const mt = materialThickness;
+            const lidClearance = clearance * 2;
+
+            const cutStyle = { stroke: '#000000', strokeWidth: 0.5, fill: 'none' };
+            const foldStyle = { stroke: '#FF0000', strokeWidth: 0.5, fill: 'none' };
+            const laserFoldStyle = { stroke: '#000000', strokeWidth: 0.5, fill: 'none' };
+
+            // Generate dashed line as actual segments for laser cutting (center-aligned)
+            const generateDashedLine = (x1, y1, x2, y2, keyPrefix) => {
+                if (exportMode !== 'laser') {
+                    return [<line key={keyPrefix} x1={x1} y1={y1} x2={x2} y2={y2} {...foldStyle} />];
+                }
+
+                const segments = [];
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+                const length = Math.sqrt(dx * dx + dy * dy);
+                const unitX = dx / length;
+                const unitY = dy / length;
+
+                // Calculate centered dash pattern
+                const dashCycle = dashLength + dashGap;
+                const numFullDashes = Math.floor((length + dashGap) / dashCycle);
+                const totalDashLength = numFullDashes * dashLength + (numFullDashes - 1) * dashGap;
+                const startOffset = (length - totalDashLength) / 2;
+
+                for (let i = 0; i < numFullDashes; i++) {
+                    const segStart = startOffset + i * dashCycle;
+                    const segEnd = segStart + dashLength;
+
+                    segments.push(
+                        <line
+                            key={`${keyPrefix}-${i}`}
+                            x1={x1 + unitX * segStart}
+                            y1={y1 + unitY * segStart}
+                            x2={x1 + unitX * segEnd}
+                            y2={y1 + unitY * segEnd}
+                            {...laserFoldStyle}
+                        />
+                    );
+                }
+
+                return segments;
+            };
+
+            // Calculate centered tab positions for an edge
+            const calculateTabPositions = (edgeLength) => {
+                if (edgeLength < tabWidth) return null;
+
+                const numTabs = Math.max(1, Math.floor((edgeLength + tabSpacing) / (tabWidth + tabSpacing)));
+
+                if (numTabs === 1) {
+                    return { numTabs: 1, positions: [(edgeLength - tabWidth) / 2] };
+                }
+
+                const totalTabWidth = numTabs * tabWidth;
+                const gap = (edgeLength - totalTabWidth) / (numTabs + 1);
+                const positions = [];
+                for (let i = 0; i < numTabs; i++) {
+                    positions.push(gap + i * (tabWidth + gap));
+                }
+                return { numTabs, positions };
+            };
+
+            // Generate tab edge path segment (for inner panels with protruding tabs)
+            const generateTabEdge = (startX, y, edgeWidth, direction) => {
+                if (!useTabs) return `L ${startX + edgeWidth} ${y}`;
+                const tabInfo = calculateTabPositions(edgeWidth);
+                if (!tabInfo) return `L ${startX + edgeWidth} ${y}`;
+
+                let path = '';
+                let currentX = startX;
+
+                for (let i = 0; i < tabInfo.numTabs; i++) {
+                    const tabX = startX + tabInfo.positions[i];
+                    path += ` L ${tabX} ${y}`;
+                    if (direction === 'up') {
+                        path += ` L ${tabX} ${y - mt}`;
+                        path += ` L ${tabX + tabWidth} ${y - mt}`;
+                    } else {
+                        path += ` L ${tabX} ${y + mt}`;
+                        path += ` L ${tabX + tabWidth} ${y + mt}`;
+                    }
+                    path += ` L ${tabX + tabWidth} ${y}`;
+                }
+                path += ` L ${startX + edgeWidth} ${y}`;
+                return path;
+            };
+
+            // Generate vertical tab edge path segment
+            const generateVerticalTabEdge = (x, startY, edgeHeight, direction) => {
+                if (!useTabs) return `L ${x} ${startY + edgeHeight}`;
+                const tabInfo = calculateTabPositions(edgeHeight);
+                if (!tabInfo) return `L ${x} ${startY + edgeHeight}`;
+
+                let path = '';
+
+                for (let i = 0; i < tabInfo.numTabs; i++) {
+                    const tabY = startY + tabInfo.positions[i];
+                    path += ` L ${x} ${tabY}`;
+                    if (direction === 'left') {
+                        path += ` L ${x - mt} ${tabY}`;
+                        path += ` L ${x - mt} ${tabY + tabWidth}`;
+                    } else {
+                        path += ` L ${x + mt} ${tabY}`;
+                        path += ` L ${x + mt} ${tabY + tabWidth}`;
+                    }
+                    path += ` L ${x} ${tabY + tabWidth}`;
+                }
+                path += ` L ${x} ${startY + edgeHeight}`;
+                return path;
+            };
+
+            // Generate slots in base panel
+            const generateSlots = (startX, startY, length, direction) => {
+                if (!useTabs) return [];
+                const tabInfo = calculateTabPositions(length);
+                if (!tabInfo) return [];
+
+                const paths = [];
+                const sc = clearance; // slot clearance
+
+                for (let i = 0; i < tabInfo.numTabs; i++) {
+                    const offset = tabInfo.positions[i];
+                    if (direction === 'horizontal') {
+                        paths.push(
+                            <rect key={`slot-${i}`}
+                                x={startX + offset - sc}
+                                y={startY - sc/2}
+                                width={tabWidth + 2*sc}
+                                height={mt + sc}
+                                {...cutStyle} />
+                        );
+                    } else {
+                        paths.push(
+                            <rect key={`slot-${i}`}
+                                x={startX - sc/2}
+                                y={startY + offset - sc}
+                                width={mt + sc}
+                                height={tabWidth + 2*sc}
+                                {...cutStyle} />
+                        );
+                    }
+                }
+                return paths;
+            };
+
+            const generateBottomBox = (offsetX, offsetY) => {
+                const elements = [];
+
+                // Interior dimensions are the reference
+                // Outer wall height = height (reaches from base to top of interior)
+                // Inner panel height = height - mt (folds back inside)
+                const innerH = height - mt;
+                const wingH = wingLength; // wing depth (adjustable to prevent overlap on narrow boxes)
+                const cl = clearance; // fold line offset for base panel
+                const clip = 0.5; // gap at fold line ends to avoid overlap detection
+
+                // Layout offsets - position base so everything fits
+                const baseX = offsetX + height + innerH + mt; // space for left wall + inner + tabs
+                const baseY = offsetY + height + innerH + mt + wingH; // space for front wall + inner + tabs + wing
+
+                // ============ FRONT WALL + INNER PANEL ============
+                // One continuous path from bottom-left to bottom-right (open at bottom for fold)
+                const frontPath = `
+                    M ${baseX} ${baseY}
+                    L ${baseX} ${baseY - height}
+                    L ${baseX} ${baseY - height - innerH}
+                    ${generateTabEdge(baseX, baseY - height - innerH, width, 'up')}
+                    L ${baseX + width} ${baseY - height}
+                    L ${baseX + width} ${baseY}
+                `;
+                elements.push(<path key="front-wall-inner" d={frontPath} {...cutStyle} />);
+
+                // Fold line between front wall and inner panel (clipped)
+                elements.push(...generateDashedLine(
+                    baseX + clip, baseY - height,
+                    baseX + width - clip, baseY - height,
+                    'front-inner-fold'
+                ));
+                // Fold line between base and front wall (offset outward by clearance, clipped)
+                elements.push(...generateDashedLine(
+                    baseX + clip, baseY - cl,
+                    baseX + width - clip, baseY - cl,
+                    'front-fold'
+                ));
+
+                // ============ BACK WALL + INNER PANEL ============
+                const backPath = `
+                    M ${baseX} ${baseY + depth}
+                    L ${baseX} ${baseY + depth + height}
+                    L ${baseX} ${baseY + depth + height + innerH}
+                    ${generateTabEdge(baseX, baseY + depth + height + innerH, width, 'down')}
+                    L ${baseX + width} ${baseY + depth + height}
+                    L ${baseX + width} ${baseY + depth}
+                `;
+                elements.push(<path key="back-wall-inner" d={backPath} {...cutStyle} />);
+
+                elements.push(...generateDashedLine(
+                    baseX + clip, baseY + depth + height,
+                    baseX + width - clip, baseY + depth + height,
+                    'back-inner-fold'
+                ));
+                elements.push(...generateDashedLine(
+                    baseX + clip, baseY + depth + cl,
+                    baseX + width - clip, baseY + depth + cl,
+                    'back-fold'
+                ));
+
+                // ============ LEFT WALL (with wings) + INNER PANEL ============
+                const lwx = baseX - height; // left edge of left wall
+
+                // Left wall wings only - aligned with offset fold lines
+                // Top wing: from fold (baseX - cl) to fold (lwx), wing extends upward
+                // Bottom wing: same pattern
+                const leftWallPath = `
+                    M ${baseX - cl} ${baseY}
+                    L ${baseX - cl - wingInset} ${baseY - wingH}
+                    L ${lwx + wingInset} ${baseY - wingH}
+                    L ${lwx} ${baseY}
+                    M ${lwx} ${baseY + depth}
+                    L ${lwx + wingInset} ${baseY + depth + wingH}
+                    L ${baseX - cl - wingInset} ${baseY + depth + wingH}
+                    L ${baseX - cl} ${baseY + depth}
+                `;
+                elements.push(<path key="left-wall" d={leftWallPath} {...cutStyle} />);
+
+                // Connecting lines between wing and front/back walls
+                elements.push(<line key="left-top-connect" x1={baseX - cl} y1={baseY} x2={baseX} y2={baseY} {...cutStyle} />);
+                elements.push(<line key="left-bottom-connect" x1={baseX - cl} y1={baseY + depth} x2={baseX} y2={baseY + depth} {...cutStyle} />);
+
+                // Left inner panel - right edge is fold (not drawn)
+                const leftInnerPath = `
+                    M ${lwx} ${baseY}
+                    L ${lwx - innerH} ${baseY}
+                    ${generateVerticalTabEdge(lwx - innerH, baseY, depth, 'left')}
+                    L ${lwx} ${baseY + depth}
+                `;
+                elements.push(<path key="left-inner" d={leftInnerPath} {...cutStyle} />);
+
+                // Fold lines for left wall (base fold offset outward by clearance, clipped)
+                elements.push(...generateDashedLine(
+                    baseX - cl, baseY + clip,
+                    baseX - cl, baseY + depth - clip,
+                    'left-fold'
+                ));
+                elements.push(...generateDashedLine(
+                    lwx, baseY + clip,
+                    lwx, baseY + depth - clip,
+                    'left-inner-fold'
+                ));
+                elements.push(...generateDashedLine(
+                    lwx + clip, baseY,
+                    baseX - cl - clip, baseY,
+                    'left-top-wing-fold'
+                ));
+                elements.push(...generateDashedLine(
+                    lwx + clip, baseY + depth,
+                    baseX - cl - clip, baseY + depth,
+                    'left-bottom-wing-fold'
+                ));
+
+                // ============ RIGHT WALL (with wings) + INNER PANEL ============
+                const rwx = baseX + width; // left edge of right wall (at base fold)
+                const rwxRight = rwx + height; // right edge of right wall (at inner panel fold)
+
+                // Right wall wings only - aligned with offset fold lines
+                const rightWallPath = `
+                    M ${rwx + cl} ${baseY}
+                    L ${rwx + cl + wingInset} ${baseY - wingH}
+                    L ${rwxRight - wingInset} ${baseY - wingH}
+                    L ${rwxRight} ${baseY}
+                    M ${rwxRight} ${baseY + depth}
+                    L ${rwxRight - wingInset} ${baseY + depth + wingH}
+                    L ${rwx + cl + wingInset} ${baseY + depth + wingH}
+                    L ${rwx + cl} ${baseY + depth}
+                `;
+                elements.push(<path key="right-wall" d={rightWallPath} {...cutStyle} />);
+
+                // Connecting lines between wing and front/back walls
+                elements.push(<line key="right-top-connect" x1={rwx} y1={baseY} x2={rwx + cl} y2={baseY} {...cutStyle} />);
+                elements.push(<line key="right-bottom-connect" x1={rwx} y1={baseY + depth} x2={rwx + cl} y2={baseY + depth} {...cutStyle} />);
+
+                // Right inner panel - left edge is fold (not drawn)
+                const rightInnerPath = `
+                    M ${rwxRight} ${baseY}
+                    L ${rwxRight + innerH} ${baseY}
+                    ${generateVerticalTabEdge(rwxRight + innerH, baseY, depth, 'right')}
+                    L ${rwxRight} ${baseY + depth}
+                `;
+                elements.push(<path key="right-inner" d={rightInnerPath} {...cutStyle} />);
+
+                elements.push(...generateDashedLine(
+                    rwx + cl, baseY + clip,
+                    rwx + cl, baseY + depth - clip,
+                    'right-fold'
+                ));
+                elements.push(...generateDashedLine(
+                    rwxRight, baseY + clip,
+                    rwxRight, baseY + depth - clip,
+                    'right-inner-fold'
+                ));
+                elements.push(...generateDashedLine(
+                    rwx + cl + clip, baseY,
+                    rwxRight - clip, baseY,
+                    'right-top-wing-fold'
+                ));
+                elements.push(...generateDashedLine(
+                    rwx + cl + clip, baseY + depth,
+                    rwxRight - clip, baseY + depth,
+                    'right-bottom-wing-fold'
+                ));
+
+                // ============ SLOTS IN BASE ============
+                elements.push(...generateSlots(baseX, baseY, width, 'horizontal').map((el, i) =>
+                    React.cloneElement(el, { key: `base-front-slot-${i}` })
+                ));
+                elements.push(...generateSlots(baseX, baseY + depth - mt, width, 'horizontal').map((el, i) =>
+                    React.cloneElement(el, { key: `base-back-slot-${i}` })
+                ));
+                elements.push(...generateSlots(baseX, baseY, depth, 'vertical').map((el, i) =>
+                    React.cloneElement(el, { key: `base-left-slot-${i}` })
+                ));
+                elements.push(...generateSlots(baseX + width - mt, baseY, depth, 'vertical').map((el, i) =>
+                    React.cloneElement(el, { key: `base-right-slot-${i}` })
+                ));
+
+                return <g key="bottom-box">{elements}</g>;
+            };
+
+            const generateLid = (offsetX, offsetY) => {
+                const elements = [];
+
+                // Lid is slightly larger to fit over the box
+                const lidW = width + 2 * mt + lidClearance;
+                const lidD = depth + 2 * mt + lidClearance;
+                const lh = lidHeight;
+                const innerH = lh - mt;
+                const wingH = lidWingLength; // separate wing length for lid
+                const cl = clearance; // fold line offset for base panel
+                const clip = 0.5; // gap at fold line ends to avoid overlap detection
+
+                const baseX = offsetX + lh + innerH + mt;
+                const baseY = offsetY + lh + innerH + mt + wingH;
+
+                // ============ FRONT LID WALL + INNER ============
+                const frontPath = `
+                    M ${baseX} ${baseY}
+                    L ${baseX} ${baseY - lh}
+                    L ${baseX} ${baseY - lh - innerH}
+                    ${generateTabEdge(baseX, baseY - lh - innerH, lidW, 'up')}
+                    L ${baseX + lidW} ${baseY - lh}
+                    L ${baseX + lidW} ${baseY}
+                `;
+                elements.push(<path key="lid-front" d={frontPath} {...cutStyle} />);
+                elements.push(...generateDashedLine(
+                    baseX + clip, baseY - lh,
+                    baseX + lidW - clip, baseY - lh,
+                    'lid-front-inner-fold'
+                ));
+                elements.push(...generateDashedLine(
+                    baseX + clip, baseY - cl,
+                    baseX + lidW - clip, baseY - cl,
+                    'lid-front-fold'
+                ));
+
+                // ============ BACK LID WALL + INNER ============
+                const backPath = `
+                    M ${baseX} ${baseY + lidD}
+                    L ${baseX} ${baseY + lidD + lh}
+                    L ${baseX} ${baseY + lidD + lh + innerH}
+                    ${generateTabEdge(baseX, baseY + lidD + lh + innerH, lidW, 'down')}
+                    L ${baseX + lidW} ${baseY + lidD + lh}
+                    L ${baseX + lidW} ${baseY + lidD}
+                `;
+                elements.push(<path key="lid-back" d={backPath} {...cutStyle} />);
+                elements.push(...generateDashedLine(
+                    baseX + clip, baseY + lidD + lh,
+                    baseX + lidW - clip, baseY + lidD + lh,
+                    'lid-back-inner-fold'
+                ));
+                elements.push(...generateDashedLine(
+                    baseX + clip, baseY + lidD + cl,
+                    baseX + lidW - clip, baseY + lidD + cl,
+                    'lid-back-fold'
+                ));
+
+                // ============ LEFT LID WALL + INNER ============
+                const llwx = baseX - lh;
+
+                // Left lid wall wings only - aligned with offset fold lines
+                const leftLidWallPath = `
+                    M ${baseX - cl} ${baseY}
+                    L ${baseX - cl - wingInset} ${baseY - wingH}
+                    L ${llwx + wingInset} ${baseY - wingH}
+                    L ${llwx} ${baseY}
+                    M ${llwx} ${baseY + lidD}
+                    L ${llwx + wingInset} ${baseY + lidD + wingH}
+                    L ${baseX - cl - wingInset} ${baseY + lidD + wingH}
+                    L ${baseX - cl} ${baseY + lidD}
+                `;
+                elements.push(<path key="lid-left-wall" d={leftLidWallPath} {...cutStyle} />);
+
+                // Connecting lines between wing and front/back walls
+                elements.push(<line key="lid-left-top-connect" x1={baseX - cl} y1={baseY} x2={baseX} y2={baseY} {...cutStyle} />);
+                elements.push(<line key="lid-left-bottom-connect" x1={baseX - cl} y1={baseY + lidD} x2={baseX} y2={baseY + lidD} {...cutStyle} />);
+
+                const leftLidInnerPath = `
+                    M ${llwx} ${baseY}
+                    L ${llwx - innerH} ${baseY}
+                    ${generateVerticalTabEdge(llwx - innerH, baseY, lidD, 'left')}
+                    L ${llwx} ${baseY + lidD}
+                `;
+                elements.push(<path key="lid-left-inner" d={leftLidInnerPath} {...cutStyle} />);
+
+                elements.push(...generateDashedLine(
+                    baseX - cl, baseY + clip,
+                    baseX - cl, baseY + lidD - clip,
+                    'lid-left-fold'
+                ));
+                elements.push(...generateDashedLine(
+                    llwx, baseY + clip,
+                    llwx, baseY + lidD - clip,
+                    'lid-left-inner-fold'
+                ));
+                elements.push(...generateDashedLine(
+                    llwx + clip, baseY,
+                    baseX - cl - clip, baseY,
+                    'lid-left-top-wing-fold'
+                ));
+                elements.push(...generateDashedLine(
+                    llwx + clip, baseY + lidD,
+                    baseX - cl - clip, baseY + lidD,
+                    'lid-left-bottom-wing-fold'
+                ));
+
+                // ============ RIGHT LID WALL + INNER ============
+                const rlwx = baseX + lidW;
+                const rlwxRight = rlwx + lh;
+
+                // Right lid wall wings only - aligned with offset fold lines
+                const rightLidWallPath = `
+                    M ${rlwx + cl} ${baseY}
+                    L ${rlwx + cl + wingInset} ${baseY - wingH}
+                    L ${rlwxRight - wingInset} ${baseY - wingH}
+                    L ${rlwxRight} ${baseY}
+                    M ${rlwxRight} ${baseY + lidD}
+                    L ${rlwxRight - wingInset} ${baseY + lidD + wingH}
+                    L ${rlwx + cl + wingInset} ${baseY + lidD + wingH}
+                    L ${rlwx + cl} ${baseY + lidD}
+                `;
+                elements.push(<path key="lid-right-wall" d={rightLidWallPath} {...cutStyle} />);
+
+                // Connecting lines between wing and front/back walls
+                elements.push(<line key="lid-right-top-connect" x1={rlwx} y1={baseY} x2={rlwx + cl} y2={baseY} {...cutStyle} />);
+                elements.push(<line key="lid-right-bottom-connect" x1={rlwx} y1={baseY + lidD} x2={rlwx + cl} y2={baseY + lidD} {...cutStyle} />);
+
+                const rightLidInnerPath = `
+                    M ${rlwxRight} ${baseY}
+                    L ${rlwxRight + innerH} ${baseY}
+                    ${generateVerticalTabEdge(rlwxRight + innerH, baseY, lidD, 'right')}
+                    L ${rlwxRight} ${baseY + lidD}
+                `;
+                elements.push(<path key="lid-right-inner" d={rightLidInnerPath} {...cutStyle} />);
+
+                elements.push(...generateDashedLine(
+                    rlwx + cl, baseY + clip,
+                    rlwx + cl, baseY + lidD - clip,
+                    'lid-right-fold'
+                ));
+                elements.push(...generateDashedLine(
+                    rlwxRight, baseY + clip,
+                    rlwxRight, baseY + lidD - clip,
+                    'lid-right-inner-fold'
+                ));
+                elements.push(...generateDashedLine(
+                    rlwx + cl + clip, baseY,
+                    rlwxRight - clip, baseY,
+                    'lid-right-top-wing-fold'
+                ));
+                elements.push(...generateDashedLine(
+                    rlwx + cl + clip, baseY + lidD,
+                    rlwxRight - clip, baseY + lidD,
+                    'lid-right-bottom-wing-fold'
+                ));
+
+                // ============ SLOTS IN LID ============
+                elements.push(...generateSlots(baseX, baseY, lidW, 'horizontal').map((el, i) =>
+                    React.cloneElement(el, { key: `lid-front-slot-${i}` })
+                ));
+                elements.push(...generateSlots(baseX, baseY + lidD - mt, lidW, 'horizontal').map((el, i) =>
+                    React.cloneElement(el, { key: `lid-back-slot-${i}` })
+                ));
+                elements.push(...generateSlots(baseX, baseY, lidD, 'vertical').map((el, i) =>
+                    React.cloneElement(el, { key: `lid-left-slot-${i}` })
+                ));
+                elements.push(...generateSlots(baseX + lidW - mt, baseY, lidD, 'vertical').map((el, i) =>
+                    React.cloneElement(el, { key: `lid-right-slot-${i}` })
+                ));
+
+                return <g key="lid">{elements}</g>;
+            };
+
+            // Calculate total pattern sizes
+            const innerH = height - mt;
+            const wingH = wingLength;
+            const bottomWidth = (height + innerH + mt) * 2 + width;
+            const bottomHeight = (height + innerH + mt + wingH) * 2 + depth;
+
+            const lidW = width + 2 * mt + lidClearance;
+            const lidD = depth + 2 * mt + lidClearance;
+            const lidInnerH = lidHeight - mt;
+            const lidWingH = lidWingLength;
+            const lidTotalWidth = (lidHeight + lidInnerH + mt) * 2 + lidW;
+            const lidTotalHeight = (lidHeight + lidInnerH + mt + lidWingH) * 2 + lidD;
+
+            const padding = 50; // preview padding
+            const exportPadding = 2; // small offset from 0,0 for export
+            const svgWidth = Math.max(showBottom ? bottomWidth : 0, showLid ? lidTotalWidth : 0) + 2 * padding;
+            const svgHeight = (showBottom ? bottomHeight : 0) + (showLid ? lidTotalHeight : 0) + (showBottom && showLid ? padding : 0) + 2 * padding;
+
+            // Export SVG with pattern aligned to top-left
+            const exportSVG = useCallback((patternType) => {
+                const svgElement = patternType === 'bottom' ? bottomSvgRef.current : lidSvgRef.current;
+                if (!svgElement) return;
+
+                // Get the group for this pattern type
+                const group = svgElement.querySelector('g');
+                if (!group) return;
+
+                // Calculate dimensions and offset
+                const patternWidth = patternType === 'bottom' ? bottomWidth : lidTotalWidth;
+                const patternHeight = patternType === 'bottom' ? bottomHeight : lidTotalHeight;
+
+                // Create new SVG with pattern at top-left (using mm units for laser software)
+                const svgW = patternWidth + exportPadding * 2;
+                const svgH = patternHeight + exportPadding * 2;
+
+                const offsetX = exportPadding - padding;
+                const offsetY = exportPadding - padding;
+
+                let svgContent = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}mm" height="${svgH}mm" viewBox="0 0 ${svgW} ${svgH}">
+<g transform="translate(${offsetX}, ${offsetY})">
+${group.outerHTML}
+</g>
+</svg>`;
+
+                const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+                const url = URL.createObjectURL(blob);
+
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `banker-box-${patternType}-${width}x${depth}x${height}mm-${exportMode}.svg`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }, [width, depth, height, exportMode, bottomWidth, bottomHeight, lidTotalWidth, lidTotalHeight, padding, exportPadding]);
+
+            const exportBottom = useCallback(() => exportSVG('bottom'), [exportSVG]);
+            const exportLid = useCallback(() => exportSVG('lid'), [exportSVG]);
+
+            const handleDimensionChange = (key, value) => {
+                const numValue = parseFloat(value) || 0;
+                setDimensions(prev => ({ ...prev, [key]: numValue }));
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-100 p-6">
+                    <div className="max-w-7xl mx-auto">
+                        <h1 className="text-3xl font-bold text-gray-800 mb-6">Banker Box Generator</h1>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <div className="bg-white rounded-lg shadow-lg p-6 overflow-y-auto" style={{maxHeight: '90vh'}}>
+                                <h2 className="text-xl font-bold mb-4">Interior Dimensions (mm)</h2>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Inside Width</label>
+                                        <input type="number" value={dimensions.width} onChange={(e) => handleDimensionChange('width', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Inside Depth</label>
+                                        <input type="number" value={dimensions.depth} onChange={(e) => handleDimensionChange('depth', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Inside Height</label>
+                                        <input type="number" value={dimensions.height} onChange={(e) => handleDimensionChange('height', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Lid Wall Height</label>
+                                        <input type="number" value={dimensions.lidHeight} onChange={(e) => handleDimensionChange('lidHeight', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Wing Length</label>
+                                        <input type="number" value={dimensions.wingLength} onChange={(e) => handleDimensionChange('wingLength', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Lid Wing Length</label>
+                                        <input type="number" value={dimensions.lidWingLength} onChange={(e) => handleDimensionChange('lidWingLength', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+
+                                    <hr className="my-4" />
+                                    <h3 className="text-lg font-bold">Advanced Settings</h3>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Material Thickness</label>
+                                        <input type="number" step="0.1" value={dimensions.materialThickness} onChange={(e) => handleDimensionChange('materialThickness', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Tab Width</label>
+                                        <input type="number" value={dimensions.tabWidth} onChange={(e) => handleDimensionChange('tabWidth', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Tab Spacing</label>
+                                        <input type="number" value={dimensions.tabSpacing} onChange={(e) => handleDimensionChange('tabSpacing', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Assembly Clearance</label>
+                                        <input type="number" step="0.1" value={dimensions.clearance} onChange={(e) => handleDimensionChange('clearance', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Wing Corner Inset</label>
+                                        <input type="number" step="0.5" value={dimensions.wingInset} onChange={(e) => handleDimensionChange('wingInset', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Dash Length</label>
+                                        <input type="number" step="0.5" value={dimensions.dashLength} onChange={(e) => handleDimensionChange('dashLength', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Dash Gap</label>
+                                        <input type="number" step="0.5" value={dimensions.dashGap} onChange={(e) => handleDimensionChange('dashGap', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+
+                                    <hr className="my-4" />
+                                    <h3 className="text-lg font-bold">Options</h3>
+                                    <div className="space-y-2">
+                                        <label className="flex items-center gap-2">
+                                            <input type="checkbox" checked={useTabs} onChange={(e) => setUseTabs(e.target.checked)} className="w-4 h-4" />
+                                            <span className="text-sm">Use Tabs & Slots</span>
+                                        </label>
+                                    </div>
+
+                                    <hr className="my-4" />
+                                    <h3 className="text-lg font-bold">Display</h3>
+                                    <div className="flex items-center gap-4">
+                                        <label className="flex items-center gap-2">
+                                            <input type="checkbox" checked={showBottom} onChange={(e) => setShowBottom(e.target.checked)} className="w-4 h-4" />
+                                            <span className="text-sm">Bottom</span>
+                                        </label>
+                                        <label className="flex items-center gap-2">
+                                            <input type="checkbox" checked={showLid} onChange={(e) => setShowLid(e.target.checked)} className="w-4 h-4" />
+                                            <span className="text-sm">Lid</span>
+                                        </label>
+                                    </div>
+
+                                    <hr className="my-4" />
+                                    <h3 className="text-lg font-bold">Export Mode</h3>
+                                    <div className="space-y-2">
+                                        <label className="flex items-center gap-2">
+                                            <input type="radio" name="exportMode" checked={exportMode === 'screen'} onChange={() => setExportMode('screen')} className="w-4 h-4" />
+                                            <span className="text-sm">Screen (Red fold lines)</span>
+                                        </label>
+                                        <label className="flex items-center gap-2">
+                                            <input type="radio" name="exportMode" checked={exportMode === 'laser'} onChange={() => setExportMode('laser')} className="w-4 h-4" />
+                                            <span className="text-sm">Laser (Dashed fold lines)</span>
+                                        </label>
+                                    </div>
+
+                                    <div className="flex gap-2 mt-4">
+                                        <button onClick={exportBottom} className="flex-1 px-4 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">
+                                            Export Bottom
+                                        </button>
+                                        <button onClick={exportLid} className="flex-1 px-4 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">
+                                            Export Lid
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                                    <h3 className="font-bold mb-2">Legend</h3>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-0.5 bg-black"></div>
+                                            <span>Cut</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {exportMode === 'laser' ? (
+                                                <div className="w-8 h-0.5 border-t-2 border-dashed border-black"></div>
+                                            ) : (
+                                                <div className="w-8 h-0.5 bg-red-500"></div>
+                                            )}
+                                            <span>Fold</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 p-4 bg-blue-50 rounded-lg text-sm">
+                                    <h3 className="font-bold mb-2">Pattern Size</h3>
+                                    <p>Bottom: {bottomWidth.toFixed(1)} × {bottomHeight.toFixed(1)} mm</p>
+                                    <p>Lid: {lidTotalWidth.toFixed(1)} × {lidTotalHeight.toFixed(1)} mm</p>
+                                </div>
+                            </div>
+
+                            <div className="lg:col-span-2 space-y-6">
+                                {showBottom && (
+                                    <div className="bg-white rounded-lg shadow-lg p-6">
+                                        <h2 className="text-xl font-bold mb-4">Bottom Box</h2>
+                                        <div className="overflow-auto border border-gray-200 rounded-lg bg-gray-50 p-4" style={{ maxHeight: '40vh' }}>
+                                            <svg ref={bottomSvgRef} width={bottomWidth + padding * 2} height={bottomHeight + padding * 2} viewBox={`0 0 ${bottomWidth + padding * 2} ${bottomHeight + padding * 2}`} xmlns="http://www.w3.org/2000/svg" className="bg-white">
+                                                {generateBottomBox(padding, padding)}
+                                            </svg>
+                                        </div>
+                                    </div>
+                                )}
+                                {showLid && (
+                                    <div className="bg-white rounded-lg shadow-lg p-6">
+                                        <h2 className="text-xl font-bold mb-4">Lid</h2>
+                                        <div className="overflow-auto border border-gray-200 rounded-lg bg-gray-50 p-4" style={{ maxHeight: '40vh' }}>
+                                            <svg ref={lidSvgRef} width={lidTotalWidth + padding * 2} height={lidTotalHeight + padding * 2} viewBox={`0 0 ${lidTotalWidth + padding * 2} ${lidTotalHeight + padding * 2}`} xmlns="http://www.w3.org/2000/svg" className="bg-white">
+                                                {generateLid(padding, padding)}
+                                            </svg>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<BankerBoxGenerator />);
+    </script>
+</body>
+</html>
