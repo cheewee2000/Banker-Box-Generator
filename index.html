@@ -248,7 +248,7 @@
                 // After assembly, interior space will be width × depth × height
                 const baseW = width + 2 * mt; // base width (inner panels take mt on each side)
                 const baseD = depth + 2 * mt; // base depth (inner panels take mt on each side)
-                const innerH = height - mt;
+                const innerH = height; // inner panel height (same as wall so tabs reach slots when folded)
                 const wingH = wingLength; // wing depth (adjustable to prevent overlap on narrow boxes)
                 const cl = clearance; // fold line offset for base panel
                 const clip = 0.5; // gap at fold line ends to avoid overlap detection
@@ -445,7 +445,7 @@
                 const lidW = width + 4 * mt + lidClearance;
                 const lidD = depth + 4 * mt + lidClearance;
                 const lh = lidHeight;
-                const innerH = lh - mt;
+                const innerH = lh; // inner panel height (same as wall so tabs reach slots when folded)
                 const wingH = lidWingLength; // separate wing length for lid
                 const cl = clearance; // fold line offset for base panel
                 const clip = 0.5; // gap at fold line ends to avoid overlap detection
@@ -624,7 +624,7 @@
             };
 
             // Calculate total pattern sizes
-            const innerH = height - mt;
+            const innerH = height; // inner panel same height as wall
             const wingH = wingLength;
             const baseW = width + 2 * mt; // base width accounting for inner panels
             const baseD = depth + 2 * mt; // base depth accounting for inner panels
@@ -633,7 +633,7 @@
 
             const lidW = width + 4 * mt + lidClearance; // fits over box base + walls
             const lidD = depth + 4 * mt + lidClearance;
-            const lidInnerH = lidHeight - mt;
+            const lidInnerH = lidHeight; // inner panel same height as wall
             const lidWingH = lidWingLength;
             const lidTotalWidth = (lidHeight + lidInnerH + mt) * 2 + lidW;
             const lidTotalHeight = (lidHeight + lidInnerH + mt + lidWingH) * 2 + lidD;
