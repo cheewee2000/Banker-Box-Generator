@@ -331,11 +331,12 @@
                 elements.push(<line key="left-bottom-connect" x1={baseX - cl} y1={baseY + baseD} x2={baseX} y2={baseY + baseD} {...cutStyle} />);
 
                 // Left inner panel - right edge is fold (not drawn)
+                // Shortened by mt on each end to not collide with front/back inner panels
                 const leftInnerPath = `
-                    M ${lwx} ${baseY}
-                    L ${lwx - innerH} ${baseY}
-                    ${generateVerticalTabEdge(lwx - innerH, baseY, baseD, 'left')}
-                    L ${lwx} ${baseY + baseD}
+                    M ${lwx} ${baseY + mt}
+                    L ${lwx - innerH} ${baseY + mt}
+                    ${generateVerticalTabEdge(lwx - innerH, baseY + mt, baseD - 2 * mt, 'left')}
+                    L ${lwx} ${baseY + baseD - mt}
                 `;
                 elements.push(<path key="left-inner" d={leftInnerPath} {...cutStyle} />);
 
@@ -347,9 +348,10 @@
                     'left-fold', 'left'
                 ));
                 // Multiple fold lines to account for material thickness
+                // Inner panel fold shortened to match panel
                 elements.push(...generateMultiFoldLine(
-                    lwx, baseY + clip,
-                    lwx, baseY + baseD - clip,
+                    lwx, baseY + mt + clip,
+                    lwx, baseY + baseD - mt - clip,
                     'left-inner-fold', 'left'
                 ));
                 elements.push(...generateDashedLine(
@@ -385,11 +387,12 @@
                 elements.push(<line key="right-bottom-connect" x1={rwx} y1={baseY + baseD} x2={rwx + cl} y2={baseY + baseD} {...cutStyle} />);
 
                 // Right inner panel - left edge is fold (not drawn)
+                // Shortened by mt on each end to not collide with front/back inner panels
                 const rightInnerPath = `
-                    M ${rwxRight} ${baseY}
-                    L ${rwxRight + innerH} ${baseY}
-                    ${generateVerticalTabEdge(rwxRight + innerH, baseY, baseD, 'right')}
-                    L ${rwxRight} ${baseY + baseD}
+                    M ${rwxRight} ${baseY + mt}
+                    L ${rwxRight + innerH} ${baseY + mt}
+                    ${generateVerticalTabEdge(rwxRight + innerH, baseY + mt, baseD - 2 * mt, 'right')}
+                    L ${rwxRight} ${baseY + baseD - mt}
                 `;
                 elements.push(<path key="right-inner" d={rightInnerPath} {...cutStyle} />);
 
@@ -400,9 +403,10 @@
                     'right-fold', 'right'
                 ));
                 // Multiple fold lines to account for material thickness
+                // Inner panel fold shortened to match panel
                 elements.push(...generateMultiFoldLine(
-                    rwxRight, baseY + clip,
-                    rwxRight, baseY + baseD - clip,
+                    rwxRight, baseY + mt + clip,
+                    rwxRight, baseY + baseD - mt - clip,
                     'right-inner-fold', 'right'
                 ));
                 elements.push(...generateDashedLine(
@@ -423,10 +427,10 @@
                 elements.push(...generateSlots(baseX, baseY + baseD - mt, baseW, 'horizontal').map((el, i) =>
                     React.cloneElement(el, { key: `base-back-slot-${i}` })
                 ));
-                elements.push(...generateSlots(baseX, baseY, baseD, 'vertical').map((el, i) =>
+                elements.push(...generateSlots(baseX, baseY + mt, baseD - 2 * mt, 'vertical').map((el, i) =>
                     React.cloneElement(el, { key: `base-left-slot-${i}` })
                 ));
-                elements.push(...generateSlots(baseX + baseW - mt, baseY, baseD, 'vertical').map((el, i) =>
+                elements.push(...generateSlots(baseX + baseW - mt, baseY + mt, baseD - 2 * mt, 'vertical').map((el, i) =>
                     React.cloneElement(el, { key: `base-right-slot-${i}` })
                 ));
 
@@ -515,11 +519,12 @@
                 elements.push(<line key="lid-left-top-connect" x1={baseX - cl} y1={baseY} x2={baseX} y2={baseY} {...cutStyle} />);
                 elements.push(<line key="lid-left-bottom-connect" x1={baseX - cl} y1={baseY + lidD} x2={baseX} y2={baseY + lidD} {...cutStyle} />);
 
+                // Shortened by mt on each end to not collide with front/back inner panels
                 const leftLidInnerPath = `
-                    M ${llwx} ${baseY}
-                    L ${llwx - innerH} ${baseY}
-                    ${generateVerticalTabEdge(llwx - innerH, baseY, lidD, 'left')}
-                    L ${llwx} ${baseY + lidD}
+                    M ${llwx} ${baseY + mt}
+                    L ${llwx - innerH} ${baseY + mt}
+                    ${generateVerticalTabEdge(llwx - innerH, baseY + mt, lidD - 2 * mt, 'left')}
+                    L ${llwx} ${baseY + lidD - mt}
                 `;
                 elements.push(<path key="lid-left-inner" d={leftLidInnerPath} {...cutStyle} />);
 
@@ -530,9 +535,10 @@
                     'lid-left-fold', 'left'
                 ));
                 // Multiple fold lines to account for material thickness
+                // Inner panel fold shortened to match panel
                 elements.push(...generateMultiFoldLine(
-                    llwx, baseY + clip,
-                    llwx, baseY + lidD - clip,
+                    llwx, baseY + mt + clip,
+                    llwx, baseY + lidD - mt - clip,
                     'lid-left-inner-fold', 'left'
                 ));
                 elements.push(...generateDashedLine(
@@ -567,11 +573,12 @@
                 elements.push(<line key="lid-right-top-connect" x1={rlwx} y1={baseY} x2={rlwx + cl} y2={baseY} {...cutStyle} />);
                 elements.push(<line key="lid-right-bottom-connect" x1={rlwx} y1={baseY + lidD} x2={rlwx + cl} y2={baseY + lidD} {...cutStyle} />);
 
+                // Shortened by mt on each end to not collide with front/back inner panels
                 const rightLidInnerPath = `
-                    M ${rlwxRight} ${baseY}
-                    L ${rlwxRight + innerH} ${baseY}
-                    ${generateVerticalTabEdge(rlwxRight + innerH, baseY, lidD, 'right')}
-                    L ${rlwxRight} ${baseY + lidD}
+                    M ${rlwxRight} ${baseY + mt}
+                    L ${rlwxRight + innerH} ${baseY + mt}
+                    ${generateVerticalTabEdge(rlwxRight + innerH, baseY + mt, lidD - 2 * mt, 'right')}
+                    L ${rlwxRight} ${baseY + lidD - mt}
                 `;
                 elements.push(<path key="lid-right-inner" d={rightLidInnerPath} {...cutStyle} />);
 
@@ -582,9 +589,10 @@
                     'lid-right-fold', 'right'
                 ));
                 // Multiple fold lines to account for material thickness
+                // Inner panel fold shortened to match panel
                 elements.push(...generateMultiFoldLine(
-                    rlwxRight, baseY + clip,
-                    rlwxRight, baseY + lidD - clip,
+                    rlwxRight, baseY + mt + clip,
+                    rlwxRight, baseY + lidD - mt - clip,
                     'lid-right-inner-fold', 'right'
                 ));
                 elements.push(...generateDashedLine(
@@ -605,10 +613,10 @@
                 elements.push(...generateSlots(baseX, baseY + lidD - mt, lidW, 'horizontal').map((el, i) =>
                     React.cloneElement(el, { key: `lid-back-slot-${i}` })
                 ));
-                elements.push(...generateSlots(baseX, baseY, lidD, 'vertical').map((el, i) =>
+                elements.push(...generateSlots(baseX, baseY + mt, lidD - 2 * mt, 'vertical').map((el, i) =>
                     React.cloneElement(el, { key: `lid-left-slot-${i}` })
                 ));
-                elements.push(...generateSlots(baseX + lidW - mt, baseY, lidD, 'vertical').map((el, i) =>
+                elements.push(...generateSlots(baseX + lidW - mt, baseY + mt, lidD - 2 * mt, 'vertical').map((el, i) =>
                     React.cloneElement(el, { key: `lid-right-slot-${i}` })
                 ));
 
