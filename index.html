@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,10 +11,17 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        * { box-sizing: border-box; }
-        body { margin: 0; font-family: 'Space Mono', monospace; }
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Space Mono', monospace;
+        }
     </style>
 </head>
+
 <body>
     <div id="root"></div>
     <script type="text/babel">
@@ -32,6 +40,7 @@
                 wingInset: 3,
                 wingLength: 40,
                 lidWingLength: 20,
+                lidClearance: 1,
                 dashLength: 5,
                 dashGap: 3,
             };
@@ -42,7 +51,7 @@
                     if (saved) {
                         return JSON.parse(saved);
                     }
-                } catch (e) {}
+                } catch (e) { }
                 return null;
             };
 
@@ -63,10 +72,9 @@
             const bottomSvgRef = useRef(null);
             const lidSvgRef = useRef(null);
 
-            const { width, depth, height, lidHeight, materialThickness, tabWidth, tabSpacing, clearance, wingInset, wingLength, lidWingLength, dashLength, dashGap } = dimensions;
+            const { width, depth, height, lidHeight, materialThickness, tabWidth, tabSpacing, clearance, wingInset, wingLength, lidWingLength, lidClearance, dashLength, dashGap } = dimensions;
 
             const mt = materialThickness;
-            const lidClearance = clearance * 2;
 
             const cutStyle = { stroke: '#000000', strokeWidth: 0.5, fill: 'none' };
             const foldStyle = { stroke: '#FF0000', strokeWidth: 0.5, fill: 'none' };
@@ -74,26 +82,26 @@
 
             // Generate multiple parallel fold lines to account for material thickness
             // offset: perpendicular offset direction ('up', 'down', 'left', 'right')
-            // For thick materials, 2 fold lines separated by material thickness create a proper bend
-            const generateMultiFoldLine = (x1, y1, x2, y2, keyPrefix, offset) => {
+            // amount: the total offset between the two lines (usually 2*mt or 3*mt)
+            const generateMultiFoldLine = (x1, y1, x2, y2, keyPrefix, offset, amount) => {
                 const lines = [];
                 // First fold line at original position
                 lines.push(...generateDashedLine(x1, y1, x2, y2, `${keyPrefix}-1`));
 
-                // Second fold line offset by material thickness
+                // Second fold line offset by amount
                 let x1_2 = x1, y1_2 = y1, x2_2 = x2, y2_2 = y2;
                 if (offset === 'up') {
-                    y1_2 -= mt;
-                    y2_2 -= mt;
+                    y1_2 -= amount;
+                    y2_2 -= amount;
                 } else if (offset === 'down') {
-                    y1_2 += mt;
-                    y2_2 += mt;
+                    y1_2 += amount;
+                    y2_2 += amount;
                 } else if (offset === 'left') {
-                    x1_2 -= mt;
-                    x2_2 -= mt;
+                    x1_2 -= amount;
+                    x2_2 -= amount;
                 } else if (offset === 'right') {
-                    x1_2 += mt;
-                    x2_2 += mt;
+                    x1_2 += amount;
+                    x2_2 += amount;
                 }
                 lines.push(...generateDashedLine(x1_2, y1_2, x2_2, y2_2, `${keyPrefix}-2`));
 
@@ -221,18 +229,18 @@
                         paths.push(
                             <rect key={`slot-${i}`}
                                 x={startX + offset - sc}
-                                y={startY - sc/2}
-                                width={tabWidth + 2*sc}
+                                y={startY - sc / 2}
+                                width={tabWidth + 2 * sc}
                                 height={mt + sc}
                                 {...cutStyle} />
                         );
                     } else {
                         paths.push(
                             <rect key={`slot-${i}`}
-                                x={startX - sc/2}
+                                x={startX - sc / 2}
                                 y={startY + offset - sc}
                                 width={mt + sc}
-                                height={tabWidth + 2*sc}
+                                height={tabWidth + 2 * sc}
                                 {...cutStyle} />
                         );
                     }
@@ -242,195 +250,161 @@
 
             const generateBottomBox = (offsetX, offsetY) => {
                 const elements = [];
+                const mt = materialThickness;
+                const fbFoldOffset = mt;
+                const lrFoldOffset = mt;
+                const fbSlotOffset = mt;
+                const lrSlotOffset = clearance;
+                const innerH = height;
+                const wingH = wingLength;
+                const clip = 2 * mt;
+                const fbInset = 2 * mt;
+                const lrInset = 2 * mt;
 
-                // Interior dimensions are the reference
-                // Base panel is larger to account for inner panels folding back inside
-                // After assembly, interior space will be width × depth × height
-                const baseW = width + 2 * mt; // base width (inner panels take mt on each side)
-                const baseD = depth + 2 * mt; // base depth (inner panels take mt on each side)
-                const innerH = height; // inner panel height matches wall height
-                const wingH = wingLength; // wing depth (adjustable to prevent overlap on narrow boxes)
-                const cl = clearance; // fold line offset for base panel
-                const clip = 0.5; // gap at fold line ends to avoid overlap detection
+                const baseW = width + 4 * mt;
+                const baseD = depth + 4 * mt;
 
-                // Layout offsets - position base so everything fits
-                // Each side: wall (height) + fold (mt) + inner panel (height) + tabs (mt)
-                const baseX = offsetX + height + mt + innerH + mt; // space for left wall + fold + inner + tabs
-                const baseY = offsetY + height + mt + innerH + mt + wingH; // space for front wall + fold + inner + tabs + wing
+                // Maximum extensions from the base fold rectangle to ensure everything stays positive
+                const topExt = Math.max(height + fbFoldOffset + innerH + mt, wingH);
+                const leftExt = height + lrFoldOffset + innerH + mt;
 
-                // Center fold line offset
-                const foldOffset = 2 * mt;
+                const baseX = offsetX + leftExt;
+                const baseY = offsetY + topExt;
 
                 // ============ FRONT WALL + INNER PANEL ============
-                // Wall starts from center fold line (baseY - foldOffset), measures height outward
-                // Wall is height, then mt for fold, then innerH for inner panel with tabs
-                const frontFold = baseY - foldOffset; // where the center fold line is
+                // Wall starts from center fold line (baseY), measures height outward
+                // Wall is height, then fbFoldOffset for fold, then innerH for inner panel with tabs
                 const frontPath = `
                     M ${baseX} ${baseY}
-                    L ${baseX} ${frontFold - height}
-                    L ${baseX} ${frontFold - height - mt}
-                    L ${baseX} ${frontFold - height - mt - innerH}
-                    ${generateTabEdge(baseX, frontFold - height - mt - innerH, baseW, 'up')}
-                    L ${baseX + baseW} ${frontFold - height - mt}
-                    L ${baseX + baseW} ${frontFold - height}
+                    L ${baseX} ${baseY - height}
+                    L ${baseX + fbInset} ${baseY - height}
+                    L ${baseX + fbInset} ${baseY - height - fbFoldOffset}
+                    L ${baseX + fbInset} ${baseY - height - fbFoldOffset - innerH}
+                    ${generateTabEdge(baseX + fbInset, baseY - height - fbFoldOffset - innerH, baseW - 2 * fbInset, 'up')}
+                    L ${baseX + baseW - fbInset} ${baseY - height - fbFoldOffset}
+                    L ${baseX + baseW - fbInset} ${baseY - height}
+                    L ${baseX + baseW} ${baseY - height}
                     L ${baseX + baseW} ${baseY}
                 `;
                 elements.push(<path key="front-wall-inner" d={frontPath} {...cutStyle} />);
 
-                // Fold lines at outer edge (between wall and inner panel) - two lines for material thickness
                 elements.push(...generateMultiFoldLine(
-                    baseX + clip, frontFold - height,
-                    baseX + baseW - clip, frontFold - height,
-                    'front-outer-fold', 'up'
+                    baseX + fbInset + clip, baseY - height,
+                    baseX + baseW - fbInset - clip, baseY - height,
+                    'front-outer-fold', 'up', fbFoldOffset
                 ));
-
                 // ============ BACK WALL + INNER PANEL ============
-                // Wall starts from center fold line (baseY + baseD + foldOffset), measures height outward
-                const backFold = baseY + baseD + foldOffset;
+                // Wall starts from center fold line (baseY + baseD), measures height outward
                 const backPath = `
                     M ${baseX} ${baseY + baseD}
-                    L ${baseX} ${backFold + height}
-                    L ${baseX} ${backFold + height + mt}
-                    L ${baseX} ${backFold + height + mt + innerH}
-                    ${generateTabEdge(baseX, backFold + height + mt + innerH, baseW, 'down')}
-                    L ${baseX + baseW} ${backFold + height + mt}
-                    L ${baseX + baseW} ${backFold + height}
+                    L ${baseX} ${baseY + baseD + height}
+                    L ${baseX + fbInset} ${baseY + baseD + height}
+                    L ${baseX + fbInset} ${baseY + baseD + height + fbFoldOffset}
+                    L ${baseX + fbInset} ${baseY + baseD + height + fbFoldOffset + innerH}
+                    ${generateTabEdge(baseX + fbInset, baseY + baseD + height + fbFoldOffset + innerH, baseW - 2 * fbInset, 'down')}
+                    L ${baseX + baseW - fbInset} ${baseY + baseD + height + fbFoldOffset}
+                    L ${baseX + baseW - fbInset} ${baseY + baseD + height}
+                    L ${baseX + baseW} ${baseY + baseD + height}
                     L ${baseX + baseW} ${baseY + baseD}
                 `;
                 elements.push(<path key="back-wall-inner" d={backPath} {...cutStyle} />);
 
-                // Fold lines at outer edge (between wall and inner panel) - two lines for material thickness
                 elements.push(...generateMultiFoldLine(
-                    baseX + clip, backFold + height,
-                    baseX + baseW - clip, backFold + height,
-                    'back-outer-fold', 'down'
+                    baseX + fbInset + clip, baseY + baseD + height,
+                    baseX + baseW - fbInset - clip, baseY + baseD + height,
+                    'back-outer-fold', 'down', fbFoldOffset
                 ));
-
                 // ============ LEFT WALL (with wings) + INNER PANEL ============
-                // Wall starts from center fold line (baseX - foldOffset), measures height outward
-                const leftFold = baseX - foldOffset;
-                const lwx = leftFold - height; // outer edge of left wall (at fold to inner panel)
-
-                // Left wall with wings and inner panel as one continuous path
-                // Top wing -> outer edge -> mt fold -> inner panel (with tabs) -> mt fold -> outer edge -> bottom wing
                 const leftWallPath = `
                     M ${baseX} ${baseY}
-                    L ${baseX - cl} ${baseY}
-                    L ${baseX - cl - wingInset} ${baseY - wingH}
-                    L ${lwx + wingInset} ${baseY - wingH}
-                    L ${lwx} ${baseY}
-                    L ${lwx} ${baseY + mt}
-                    L ${lwx - mt} ${baseY + mt}
-                    L ${lwx - mt - innerH} ${baseY + mt}
-                    ${generateVerticalTabEdge(lwx - mt - innerH, baseY + mt, baseD - 2 * mt, 'left')}
-                    L ${lwx - mt} ${baseY + baseD - mt}
-                    L ${lwx} ${baseY + baseD - mt}
-                    L ${lwx} ${baseY + baseD}
-                    L ${lwx + wingInset} ${baseY + baseD + wingH}
-                    L ${baseX - cl - wingInset} ${baseY + baseD + wingH}
-                    L ${baseX - cl} ${baseY + baseD}
+                    L ${baseX} ${baseY + mt}
+                    L ${baseX - wingInset} ${baseY + mt - wingH}
+                    L ${baseX - height + wingInset} ${baseY + mt - wingH}
+                    L ${baseX - height} ${baseY + mt}
+                    L ${baseX - height} ${baseY + lrInset}
+                    L ${baseX - height - lrFoldOffset} ${baseY + lrInset}
+                    L ${baseX - height - lrFoldOffset - innerH} ${baseY + lrInset}
+                    ${generateVerticalTabEdge(baseX - height - lrFoldOffset - innerH, baseY + lrInset, baseD - 2 * lrInset, 'left')}
+                    L ${baseX - height - lrFoldOffset} ${baseY + baseD - lrInset}
+                    L ${baseX - height} ${baseY + baseD - lrInset}
+                    L ${baseX - height} ${baseY + baseD - mt}
+                    L ${baseX - height + wingInset} ${baseY + baseD - mt + wingH}
+                    L ${baseX - wingInset} ${baseY + baseD - mt + wingH}
+                    L ${baseX} ${baseY + baseD - mt}
                     L ${baseX} ${baseY + baseD}
                 `;
                 elements.push(<path key="left-wall-inner" d={leftWallPath} {...cutStyle} />);
 
-                // Fold lines at outer edge (between wall and inner panel) - two lines for material thickness
+                const lwx = baseX - height;
                 elements.push(...generateMultiFoldLine(
-                    lwx, baseY + mt + clip,
-                    lwx, baseY + baseD - mt - clip,
-                    'left-outer-fold', 'left'
-                ));
-                elements.push(...generateDashedLine(
-                    lwx + clip, baseY,
-                    baseX - cl - clip, baseY,
+                    lwx, baseY + lrInset + clip,
+                    lwx, baseY + baseD - lrInset - clip,
+                    'left-outer-fold', 'left', lrFoldOffset
+                )); elements.push(...generateDashedLine(
+                    baseX - height + clip, baseY + mt,
+                    baseX - clip, baseY + mt,
                     'left-top-wing-fold'
                 ));
                 elements.push(...generateDashedLine(
-                    lwx + clip, baseY + baseD,
-                    baseX - cl - clip, baseY + baseD,
+                    baseX - height + clip, baseY + baseD - mt,
+                    baseX - clip, baseY + baseD - mt,
                     'left-bottom-wing-fold'
                 ));
 
                 // ============ RIGHT WALL (with wings) + INNER PANEL ============
-                // Wall starts from center fold line (baseX + baseW + foldOffset), measures height outward
-                const rightFold = baseX + baseW + foldOffset;
-                const rwx = baseX + baseW; // inner edge of right wall (at base panel)
-                const rwxRight = rightFold + height; // outer edge of right wall (at fold to inner panel)
-
-                // Right wall with wings and inner panel as one continuous path
-                // Top wing -> outer edge -> mt fold -> inner panel (with tabs) -> mt fold -> outer edge -> bottom wing
                 const rightWallPath = `
-                    M ${rwx} ${baseY}
-                    L ${rwx + cl} ${baseY}
-                    L ${rwx + cl + wingInset} ${baseY - wingH}
-                    L ${rwxRight - wingInset} ${baseY - wingH}
-                    L ${rwxRight} ${baseY}
-                    L ${rwxRight} ${baseY + mt}
-                    L ${rwxRight + mt} ${baseY + mt}
-                    L ${rwxRight + mt + innerH} ${baseY + mt}
-                    ${generateVerticalTabEdge(rwxRight + mt + innerH, baseY + mt, baseD - 2 * mt, 'right')}
-                    L ${rwxRight + mt} ${baseY + baseD - mt}
-                    L ${rwxRight} ${baseY + baseD - mt}
-                    L ${rwxRight} ${baseY + baseD}
-                    L ${rwxRight - wingInset} ${baseY + baseD + wingH}
-                    L ${rwx + cl + wingInset} ${baseY + baseD + wingH}
-                    L ${rwx + cl} ${baseY + baseD}
-                    L ${rwx} ${baseY + baseD}
+                    M ${baseX + baseW} ${baseY}
+                    L ${baseX + baseW} ${baseY + mt}
+                    L ${baseX + baseW + wingInset} ${baseY + mt - wingH}
+                    L ${baseX + baseW + height - wingInset} ${baseY + mt - wingH}
+                    L ${baseX + baseW + height} ${baseY + mt}
+                    L ${baseX + baseW + height} ${baseY + lrInset}
+                    L ${baseX + baseW + height + lrFoldOffset} ${baseY + lrInset}
+                    L ${baseX + baseW + height + lrFoldOffset + innerH} ${baseY + lrInset}
+                    ${generateVerticalTabEdge(baseX + baseW + height + lrFoldOffset + innerH, baseY + lrInset, baseD - 2 * lrInset, 'right')}
+                    L ${baseX + baseW + height + lrFoldOffset} ${baseY + baseD - lrInset}
+                    L ${baseX + baseW + height} ${baseY + baseD - lrInset}
+                    L ${baseX + baseW + height} ${baseY + baseD - mt}
+                    L ${baseX + baseW + height - wingInset} ${baseY + baseD - mt + wingH}
+                    L ${baseX + baseW + wingInset} ${baseY + baseD - mt + wingH}
+                    L ${baseX + baseW} ${baseY + baseD - mt}
+                    L ${baseX + baseW} ${baseY + baseD}
                 `;
                 elements.push(<path key="right-wall-inner" d={rightWallPath} {...cutStyle} />);
 
-                // Fold lines at outer edge (between wall and inner panel) - two lines for material thickness
+                const rwxRight = baseX + baseW + height;
                 elements.push(...generateMultiFoldLine(
-                    rwxRight, baseY + mt + clip,
-                    rwxRight, baseY + baseD - mt - clip,
-                    'right-outer-fold', 'right'
-                ));
-                elements.push(...generateDashedLine(
-                    rwx + cl + clip, baseY,
-                    rwxRight - clip, baseY,
+                    rwxRight, baseY + lrInset + clip,
+                    rwxRight, baseY + baseD - lrInset - clip,
+                    'right-outer-fold', 'right', lrFoldOffset
+                )); elements.push(...generateDashedLine(
+                    baseX + baseW + clip, baseY + mt,
+                    baseX + baseW + height - clip, baseY + mt,
                     'right-top-wing-fold'
                 ));
                 elements.push(...generateDashedLine(
-                    rwx + cl + clip, baseY + baseD,
-                    rwxRight - clip, baseY + baseD,
+                    baseX + baseW + clip, baseY + baseD - mt,
+                    baseX + baseW + height - clip, baseY + baseD - mt,
                     'right-bottom-wing-fold'
                 ));
 
                 // ============ CENTER FOLD LINE RECTANGLE ============
-                // Rectangle marks where the walls fold up from the base
-                // Offset outward by 2*mt from base panel edges
-                // Use dashed lines with centered dashes
-                elements.push(...generateDashedLine(
-                    baseX - foldOffset, baseY - foldOffset,
-                    baseX + baseW + foldOffset, baseY - foldOffset,
-                    'center-fold-front'
-                ));
-                elements.push(...generateDashedLine(
-                    baseX + baseW + foldOffset, baseY - foldOffset,
-                    baseX + baseW + foldOffset, baseY + baseD + foldOffset,
-                    'center-fold-right'
-                ));
-                elements.push(...generateDashedLine(
-                    baseX + baseW + foldOffset, baseY + baseD + foldOffset,
-                    baseX - foldOffset, baseY + baseD + foldOffset,
-                    'center-fold-back'
-                ));
-                elements.push(...generateDashedLine(
-                    baseX - foldOffset, baseY + baseD + foldOffset,
-                    baseX - foldOffset, baseY - foldOffset,
-                    'center-fold-left'
-                ));
+                elements.push(...generateDashedLine(baseX + clip, baseY, baseX + baseW - clip, baseY, 'center-fold-front'));
+                elements.push(...generateDashedLine(baseX + baseW, baseY + clip, baseX + baseW, baseY + baseD - clip, 'center-fold-right'));
+                elements.push(...generateDashedLine(baseX + baseW - clip, baseY + baseD, baseX + clip, baseY + baseD, 'center-fold-back'));
+                elements.push(...generateDashedLine(baseX, baseY + baseD - clip, baseX, baseY + clip, 'center-fold-left'));
 
                 // ============ SLOTS IN BASE ============
-                elements.push(...generateSlots(baseX, baseY, baseW, 'horizontal').map((el, i) =>
+                elements.push(...generateSlots(baseX + fbInset, baseY + fbSlotOffset, baseW - 2 * fbInset, 'horizontal').map((el, i) =>
                     React.cloneElement(el, { key: `base-front-slot-${i}` })
                 ));
-                elements.push(...generateSlots(baseX, baseY + baseD - mt, baseW, 'horizontal').map((el, i) =>
+                elements.push(...generateSlots(baseX + fbInset, baseY + baseD - fbSlotOffset - mt, baseW - 2 * fbInset, 'horizontal').map((el, i) =>
                     React.cloneElement(el, { key: `base-back-slot-${i}` })
                 ));
-                elements.push(...generateSlots(baseX, baseY + mt, baseD - 2 * mt, 'vertical').map((el, i) =>
+                elements.push(...generateSlots(baseX + lrSlotOffset, baseY + lrInset, baseD - 2 * lrInset, 'vertical').map((el, i) =>
                     React.cloneElement(el, { key: `base-left-slot-${i}` })
                 ));
-                elements.push(...generateSlots(baseX + baseW - mt, baseY + mt, baseD - 2 * mt, 'vertical').map((el, i) =>
+                elements.push(...generateSlots(baseX + baseW - lrSlotOffset - mt, baseY + lrInset, baseD - 2 * lrInset, 'vertical').map((el, i) =>
                     React.cloneElement(el, { key: `base-right-slot-${i}` })
                 ));
 
@@ -441,201 +415,194 @@
                 const elements = [];
 
                 // Lid is slightly larger to fit over the box
-                // Box base is (width + 2*mt) × (depth + 2*mt), lid needs clearance over that
-                const lidW = width + 4 * mt + lidClearance;
-                const lidD = depth + 4 * mt + lidClearance;
+                // Box base is (width + 4*mt) × (depth + 4*mt), lid needs clearance over that
+                // Plus lid's own double walls (another 4*mt)
+                const lidW = width + 8 * mt + lidClearance;
+                const lidD = depth + 8 * mt + lidClearance;
                 const lh = lidHeight;
-                const innerH = lh; // inner panel height matches wall height
-                const wingH = lidWingLength; // separate wing length for lid
-                const cl = clearance; // fold line offset for base panel
-                const clip = 0.5; // gap at fold line ends to avoid overlap detection
+                const fbFoldOffset = mt;
+                const lrFoldOffset = mt;
+                const fbSlotOffset = mt;
+                const lrSlotOffset = clearance;
+                const innerH = lh;
+                const wingH = lidWingLength;
+                const clip = 2 * mt;
+                const fbInset = 2 * mt;
+                const lrInset = 2 * mt;
 
-                // Each side: wall (lh) + fold (mt) + inner panel (lh) + tabs (mt)
-                const baseX = offsetX + lh + mt + innerH + mt;
-                const baseY = offsetY + lh + mt + innerH + mt + wingH;
+                // Maximum extensions from the base fold rectangle to ensure everything stays positive
+                const topExt = Math.max(lh + fbFoldOffset + innerH + mt, wingH);
+                const leftExt = lh + lrFoldOffset + innerH + mt;
+
+                const baseX = offsetX + leftExt;
+                const baseY = offsetY + topExt;
 
                 // ============ FRONT LID WALL + INNER ============
                 // Wall is lh, then mt for fold, then innerH for inner panel with tabs
                 const frontPath = `
                     M ${baseX} ${baseY}
                     L ${baseX} ${baseY - lh}
-                    L ${baseX} ${baseY - lh - mt}
-                    L ${baseX} ${baseY - lh - mt - innerH}
-                    ${generateTabEdge(baseX, baseY - lh - mt - innerH, lidW, 'up')}
-                    L ${baseX + lidW} ${baseY - lh - mt}
+                    L ${baseX + fbInset} ${baseY - lh}
+                    L ${baseX + fbInset} ${baseY - lh - fbFoldOffset}
+                    L ${baseX + fbInset} ${baseY - lh - fbFoldOffset - innerH}
+                    ${generateTabEdge(baseX + fbInset, baseY - lh - fbFoldOffset - innerH, lidW - 2 * fbInset, 'up')}
+                    L ${baseX + lidW - fbInset} ${baseY - lh - fbFoldOffset}
+                    L ${baseX + lidW - fbInset} ${baseY - lh}
                     L ${baseX + lidW} ${baseY - lh}
                     L ${baseX + lidW} ${baseY}
                 `;
                 elements.push(<path key="lid-front" d={frontPath} {...cutStyle} />);
-                // Fold lines at outer edge (between wall and inner panel) - two lines for material thickness
                 elements.push(...generateMultiFoldLine(
-                    baseX + clip, baseY - lh,
-                    baseX + lidW - clip, baseY - lh,
-                    'lid-front-outer-fold', 'up'
+                    baseX + fbInset + clip, baseY - lh,
+                    baseX + lidW - fbInset - clip, baseY - lh,
+                    'lid-front-outer-fold', 'up', fbFoldOffset
                 ));
-
                 // ============ BACK LID WALL + INNER ============
                 // Wall is lh, then mt for fold, then innerH for inner panel with tabs
                 const backPath = `
                     M ${baseX} ${baseY + lidD}
                     L ${baseX} ${baseY + lidD + lh}
-                    L ${baseX} ${baseY + lidD + lh + mt}
-                    L ${baseX} ${baseY + lidD + lh + mt + innerH}
-                    ${generateTabEdge(baseX, baseY + lidD + lh + mt + innerH, lidW, 'down')}
-                    L ${baseX + lidW} ${baseY + lidD + lh + mt}
+                    L ${baseX + fbInset} ${baseY + lidD + lh}
+                    L ${baseX + fbInset} ${baseY + lidD + lh + fbFoldOffset}
+                    L ${baseX + fbInset} ${baseY + lidD + lh + fbFoldOffset + innerH}
+                    ${generateTabEdge(baseX + fbInset, baseY + lidD + lh + fbFoldOffset + innerH, lidW - 2 * fbInset, 'down')}
+                    L ${baseX + lidW - fbInset} ${baseY + lidD + lh + fbFoldOffset}
+                    L ${baseX + lidW - fbInset} ${baseY + lidD + lh}
                     L ${baseX + lidW} ${baseY + lidD + lh}
                     L ${baseX + lidW} ${baseY + lidD}
                 `;
                 elements.push(<path key="lid-back" d={backPath} {...cutStyle} />);
-                // Fold lines at outer edge (between wall and inner panel) - two lines for material thickness
                 elements.push(...generateMultiFoldLine(
-                    baseX + clip, baseY + lidD + lh,
-                    baseX + lidW - clip, baseY + lidD + lh,
-                    'lid-back-outer-fold', 'down'
+                    baseX + fbInset + clip, baseY + lidD + lh,
+                    baseX + lidW - fbInset - clip, baseY + lidD + lh,
+                    'lid-back-outer-fold', 'down', fbFoldOffset
                 ));
-
                 // ============ LEFT LID WALL + INNER ============
-                const llwx = baseX - lh; // outer edge of left lid wall (at fold to inner panel)
+                // ============ LEFT LID WALL + INNER ============
 
                 // Left lid wall with wings and inner panel as one continuous path
                 // Top wing -> outer edge -> mt fold -> inner panel (with tabs) -> mt fold -> outer edge -> bottom wing
                 const leftLidWallPath = `
                     M ${baseX} ${baseY}
-                    L ${baseX - cl} ${baseY}
-                    L ${baseX - cl - wingInset} ${baseY - wingH}
-                    L ${llwx + wingInset} ${baseY - wingH}
-                    L ${llwx} ${baseY}
-                    L ${llwx} ${baseY + mt}
-                    L ${llwx - mt} ${baseY + mt}
-                    L ${llwx - mt - innerH} ${baseY + mt}
-                    ${generateVerticalTabEdge(llwx - mt - innerH, baseY + mt, lidD - 2 * mt, 'left')}
-                    L ${llwx - mt} ${baseY + lidD - mt}
-                    L ${llwx} ${baseY + lidD - mt}
-                    L ${llwx} ${baseY + lidD}
-                    L ${llwx + wingInset} ${baseY + lidD + wingH}
-                    L ${baseX - cl - wingInset} ${baseY + lidD + wingH}
-                    L ${baseX - cl} ${baseY + lidD}
+                    L ${baseX} ${baseY + mt}
+                    L ${baseX - wingInset} ${baseY + mt - wingH}
+                    L ${baseX - lh + wingInset} ${baseY + mt - wingH}
+                    L ${baseX - lh} ${baseY + mt}
+                    L ${baseX - lh} ${baseY + lrInset}
+                    L ${baseX - lh - lrFoldOffset} ${baseY + lrInset}
+                    L ${baseX - lh - lrFoldOffset - innerH} ${baseY + lrInset}
+                    ${generateVerticalTabEdge(baseX - lh - lrFoldOffset - innerH, baseY + lrInset, lidD - 2 * lrInset, 'left')}
+                    L ${baseX - lh - lrFoldOffset} ${baseY + lidD - lrInset}
+                    L ${baseX - lh} ${baseY + lidD - lrInset}
+                    L ${baseX - lh} ${baseY + lidD - mt}
+                    L ${baseX - lh + wingInset} ${baseY + lidD - mt + wingH}
+                    L ${baseX - wingInset} ${baseY + lidD - mt + wingH}
+                    L ${baseX} ${baseY + lidD - mt}
                     L ${baseX} ${baseY + lidD}
                 `;
                 elements.push(<path key="lid-left-wall-inner" d={leftLidWallPath} {...cutStyle} />);
 
-                // Fold lines at outer edge (between wall and inner panel) - two lines for material thickness
+                const llwx = baseX - lh;
                 elements.push(...generateMultiFoldLine(
-                    llwx, baseY + mt + clip,
-                    llwx, baseY + lidD - mt - clip,
-                    'lid-left-outer-fold', 'left'
-                ));
-                elements.push(...generateDashedLine(
-                    llwx + clip, baseY,
-                    baseX - cl - clip, baseY,
+                    llwx, baseY + lrInset + clip,
+                    llwx, baseY + lidD - lrInset - clip,
+                    'lid-left-outer-fold', 'left', lrFoldOffset
+                )); elements.push(...generateDashedLine(
+                    baseX - lh + clip, baseY + mt,
+                    baseX - clip, baseY + mt,
                     'lid-left-top-wing-fold'
                 ));
                 elements.push(...generateDashedLine(
-                    llwx + clip, baseY + lidD,
-                    baseX - cl - clip, baseY + lidD,
+                    baseX - lh + clip, baseY + lidD - mt,
+                    baseX - clip, baseY + lidD - mt,
                     'lid-left-bottom-wing-fold'
                 ));
 
                 // ============ RIGHT LID WALL + INNER ============
+                // ============ RIGHT LID WALL + INNER ============
                 const rlwx = baseX + lidW; // inner edge of right lid wall (at base fold)
-                const rlwxRight = rlwx + lh; // outer edge of right lid wall (at fold to inner panel)
 
                 // Right lid wall with wings and inner panel as one continuous path
                 // Top wing -> outer edge -> mt fold -> inner panel (with tabs) -> mt fold -> outer edge -> bottom wing
                 const rightLidWallPath = `
-                    M ${rlwx} ${baseY}
-                    L ${rlwx + cl} ${baseY}
-                    L ${rlwx + cl + wingInset} ${baseY - wingH}
-                    L ${rlwxRight - wingInset} ${baseY - wingH}
-                    L ${rlwxRight} ${baseY}
-                    L ${rlwxRight} ${baseY + mt}
-                    L ${rlwxRight + mt} ${baseY + mt}
-                    L ${rlwxRight + mt + innerH} ${baseY + mt}
-                    ${generateVerticalTabEdge(rlwxRight + mt + innerH, baseY + mt, lidD - 2 * mt, 'right')}
-                    L ${rlwxRight + mt} ${baseY + lidD - mt}
-                    L ${rlwxRight} ${baseY + lidD - mt}
-                    L ${rlwxRight} ${baseY + lidD}
-                    L ${rlwxRight - wingInset} ${baseY + lidD + wingH}
-                    L ${rlwx + cl + wingInset} ${baseY + lidD + wingH}
-                    L ${rlwx + cl} ${baseY + lidD}
-                    L ${rlwx} ${baseY + lidD}
+                    M ${baseX + lidW} ${baseY}
+                    L ${baseX + lidW} ${baseY + mt}
+                    L ${baseX + lidW + wingInset} ${baseY + mt - wingH}
+                    L ${baseX + lidW + lh - wingInset} ${baseY + mt - wingH}
+                    L ${baseX + lidW + lh} ${baseY + mt}
+                    L ${baseX + lidW + lh} ${baseY + lrInset}
+                    L ${baseX + lidW + lh + lrFoldOffset} ${baseY + lrInset}
+                    L ${baseX + lidW + lh + lrFoldOffset + innerH} ${baseY + lrInset}
+                    ${generateVerticalTabEdge(baseX + lidW + lh + lrFoldOffset + innerH, baseY + lrInset, lidD - 2 * lrInset, 'right')}
+                    L ${baseX + lidW + lh + lrFoldOffset} ${baseY + lidD - lrInset}
+                    L ${baseX + lidW + lh} ${baseY + lidD - lrInset}
+                    L ${baseX + lidW + lh} ${baseY + lidD - mt}
+                    L ${baseX + lidW + lh - wingInset} ${baseY + lidD - mt + wingH}
+                    L ${baseX + lidW + wingInset} ${baseY + lidD - mt + wingH}
+                    L ${baseX + lidW} ${baseY + lidD - mt}
+                    L ${baseX + lidW} ${baseY + lidD}
                 `;
                 elements.push(<path key="lid-right-wall-inner" d={rightLidWallPath} {...cutStyle} />);
 
-                // Fold lines at outer edge (between wall and inner panel) - two lines for material thickness
+                const rlwxRight = baseX + lidW + lh;
                 elements.push(...generateMultiFoldLine(
-                    rlwxRight, baseY + mt + clip,
-                    rlwxRight, baseY + lidD - mt - clip,
-                    'lid-right-outer-fold', 'right'
-                ));
-                elements.push(...generateDashedLine(
-                    rlwx + cl + clip, baseY,
-                    rlwxRight - clip, baseY,
+                    rlwxRight, baseY + lrInset + clip,
+                    rlwxRight, baseY + lidD - lrInset - clip,
+                    'lid-right-outer-fold', 'right', lrFoldOffset
+                )); elements.push(...generateDashedLine(
+                    baseX + lidW + clip, baseY + mt,
+                    baseX + lidW + lh - clip, baseY + mt,
                     'lid-right-top-wing-fold'
                 ));
                 elements.push(...generateDashedLine(
-                    rlwx + cl + clip, baseY + lidD,
-                    rlwxRight - clip, baseY + lidD,
+                    baseX + lidW + clip, baseY + lidD - mt,
+                    baseX + lidW + lh - clip, baseY + lidD - mt,
                     'lid-right-bottom-wing-fold'
                 ));
 
+                // ============ CENTER FOLD LINE RECTANGLE ============
+                elements.push(...generateDashedLine(baseX + clip, baseY, baseX + lidW - clip, baseY, 'lid-center-fold-front'));
+                elements.push(...generateDashedLine(baseX + lidW, baseY + clip, baseX + lidW, baseY + lidD - clip, 'lid-center-fold-right'));
+                elements.push(...generateDashedLine(baseX + lidW - clip, baseY + lidD, baseX + clip, baseY + lidD, 'lid-center-fold-back'));
+                elements.push(...generateDashedLine(baseX, baseY + lidD - clip, baseX, baseY + clip, 'lid-center-fold-left'));
+
                 // ============ SLOTS IN LID ============
-                elements.push(...generateSlots(baseX, baseY, lidW, 'horizontal').map((el, i) =>
+                elements.push(...generateSlots(baseX + fbInset, baseY + fbSlotOffset, lidW - 2 * fbInset, 'horizontal').map((el, i) =>
                     React.cloneElement(el, { key: `lid-front-slot-${i}` })
                 ));
-                elements.push(...generateSlots(baseX, baseY + lidD - mt, lidW, 'horizontal').map((el, i) =>
+                elements.push(...generateSlots(baseX + fbInset, baseY + lidD - fbSlotOffset - mt, lidW - 2 * fbInset, 'horizontal').map((el, i) =>
                     React.cloneElement(el, { key: `lid-back-slot-${i}` })
                 ));
-                elements.push(...generateSlots(baseX, baseY + mt, lidD - 2 * mt, 'vertical').map((el, i) =>
+                elements.push(...generateSlots(baseX + lrSlotOffset, baseY + lrInset, lidD - 2 * lrInset, 'vertical').map((el, i) =>
                     React.cloneElement(el, { key: `lid-left-slot-${i}` })
                 ));
-                elements.push(...generateSlots(baseX + lidW - mt, baseY + mt, lidD - 2 * mt, 'vertical').map((el, i) =>
+                elements.push(...generateSlots(baseX + lidW - lrSlotOffset - mt, baseY + lrInset, lidD - 2 * lrInset, 'vertical').map((el, i) =>
                     React.cloneElement(el, { key: `lid-right-slot-${i}` })
-                ));
-
-                // ============ CENTER FOLD LINE RECTANGLE ============
-                // Rectangle marks where the walls fold up from the base
-                // Use dashed lines with centered dashes
-                elements.push(...generateDashedLine(
-                    baseX, baseY,
-                    baseX + lidW, baseY,
-                    'lid-center-fold-front'
-                ));
-                elements.push(...generateDashedLine(
-                    baseX + lidW, baseY,
-                    baseX + lidW, baseY + lidD,
-                    'lid-center-fold-right'
-                ));
-                elements.push(...generateDashedLine(
-                    baseX + lidW, baseY + lidD,
-                    baseX, baseY + lidD,
-                    'lid-center-fold-back'
-                ));
-                elements.push(...generateDashedLine(
-                    baseX, baseY + lidD,
-                    baseX, baseY,
-                    'lid-center-fold-left'
                 ));
 
                 return <g key="lid">{elements}</g>;
             };
 
-            // Calculate total pattern sizes
-            // Each side: foldOffset (2*mt) + wall (height) + fold (mt) + inner panel (height) + tabs (mt)
-            const foldOffset = 2 * mt;
-            const innerH = height; // inner panel matches wall height
-            const wingH = wingLength;
-            const baseW = width + 2 * mt; // base width accounting for inner panels
-            const baseD = depth + 2 * mt; // base depth accounting for inner panels
-            const bottomWidth = (foldOffset + height + mt + innerH + mt) * 2 + baseW;
-            const bottomHeight = (foldOffset + height + mt + innerH + mt + wingH) * 2 + baseD;
+            // Calculate total pattern sizes for the patterns
+            const boxInnerH = height;
+            const boxFbFold = mt;
+            const boxLrFold = mt;
+            const boxBaseW = width + 4 * mt;
+            const boxBaseD = depth + 4 * mt;
+            const boxTopExt = Math.max(height + boxFbFold + boxInnerH + mt, wingLength);
+            const boxLeftExt = height + boxLrFold + boxInnerH + mt;
+            const bottomWidth = boxLeftExt * 2 + boxBaseW;
+            const bottomHeight = boxTopExt * 2 + boxBaseD;
 
-            const lidW = width + 4 * mt + lidClearance; // fits over box base + walls
-            const lidD = depth + 4 * mt + lidClearance;
-            const lidInnerH = lidHeight; // inner panel matches wall height
-            const lidWingH = lidWingLength;
-            const lidTotalWidth = (foldOffset + lidHeight + mt + lidInnerH + mt) * 2 + lidW;
-            const lidTotalHeight = (foldOffset + lidHeight + mt + lidInnerH + mt + lidWingH) * 2 + lidD;
+            const lidW = width + 8 * mt + lidClearance;
+            const lidD = depth + 8 * mt + lidClearance;
+            const lidInnerH = lidHeight;
+            const lidFbFold = mt;
+            const lidLrFold = mt;
+            const lidTopExt = Math.max(lidHeight + lidFbFold + lidInnerH + mt, lidWingLength);
+            const lidLeftExt = lidHeight + lidLrFold + lidInnerH + mt;
+            const lidTotalWidth = lidLeftExt * 2 + lidW;
+            const lidTotalHeight = lidTopExt * 2 + lidD;
 
             const padding = 50; // preview padding
             const exportPadding = 2; // small offset from 0,0 for export
@@ -695,7 +662,7 @@ ${group.outerHTML}
                         <h1 className="text-3xl font-bold text-gray-800 mb-6">Banker Box Generator</h1>
 
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            <div className="bg-white rounded-lg shadow-lg p-6 overflow-y-auto" style={{maxHeight: '90vh'}}>
+                            <div className="bg-white rounded-lg shadow-lg p-6 overflow-y-auto" style={{ maxHeight: '90vh' }}>
                                 <h2 className="text-xl font-bold mb-4">Interior Dimensions (mm)</h2>
 
                                 <div className="space-y-4">
@@ -716,11 +683,11 @@ ${group.outerHTML}
                                         <input type="number" value={dimensions.lidHeight} onChange={(e) => handleDimensionChange('lidHeight', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Wing Length</label>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Wing Length (Bottom)</label>
                                         <input type="number" value={dimensions.wingLength} onChange={(e) => handleDimensionChange('wingLength', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Lid Wing Length</label>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Wing Length (Lid)</label>
                                         <input type="number" value={dimensions.lidWingLength} onChange={(e) => handleDimensionChange('lidWingLength', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
                                     </div>
 
@@ -738,6 +705,10 @@ ${group.outerHTML}
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">Tab Spacing</label>
                                         <input type="number" value={dimensions.tabSpacing} onChange={(e) => handleDimensionChange('tabSpacing', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Lid Clearance</label>
+                                        <input type="number" step="0.1" value={dimensions.lidClearance} onChange={(e) => handleDimensionChange('lidClearance', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">Assembly Clearance</label>
@@ -858,4 +829,5 @@ ${group.outerHTML}
         ReactDOM.createRoot(document.getElementById('root')).render(<BankerBoxGenerator />);
     </script>
 </body>
+
 </html>
